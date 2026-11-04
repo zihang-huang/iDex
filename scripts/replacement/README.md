@@ -70,6 +70,9 @@ sprites; decoded images smaller than 64 px on either axis are excluded. TCG walk
 all 250-card pages, filters single-national-number Pokémon cards, fetches
 `images.small`, and creates a marked `card_art_crop` at x8–92%, y11–47%. This crop
 is approximate for nonstandard/full-art layouts, not a verified object annotation.
+The API still lists a few cards whose image the CDN no longer serves (e.g.
+`ecard2-67`); a 404/410 on a card image is recorded in `tcg/excluded.json` as
+`http_404`/`http_410` and skipped, while every other HTTP error still stops the stage.
 
 JJMack metadata is fetched at revision
 `959ff557b102fc3b4f912d0ca769273be5b9ca7f`; metadata/data ingestion reject another

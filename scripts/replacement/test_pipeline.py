@@ -221,6 +221,30 @@ def test_tcg_acquisition_all_pages_and_crops_share_group(tmp_path, workers):
     previous=len(calls);sources.acquire_tcg(tmp_path,labels,fetch,0);assert len(calls)==previous
 
 
+@pytest.mark.parametrize('workers',[1,3])
+def test_tcg_removed_card_image_is_excluded_other_errors_raise(tmp_path, workers):
+    valid=fixture('tcg.json')['data'][0];gone=copy.deepcopy(valid);gone_url='https://images.pokemontcg.io/test/9.png'
+    gone.update(id='test-9',number='9',images=dict(small=gone_url))
+    def make_fetch(code):
+        def fetch(url,target,limit):
+            target.parent.mkdir(parents=True,exist_ok=True)
+            if url==gone_url: raise urllib.error.HTTPError(url,code,'fixture',{},None)
+            if not target.exists():
+                if 'page=1&' in url:
+                    target.write_text(json.dumps(dict(page=1,pageSize=250,count=2,totalCount=2,data=[gone,valid])))
+                else: target.write_bytes(image_bytes((245,342)))
+            return dict(url=url,path=str(target),bytes=target.stat().st_size,sha256=sha(target))
+        return fetch
+    labels=[dict(id=1025,name='pecharunt')]
+    sources.acquire_tcg(tmp_path,labels,make_fetch(404),0,workers=workers)
+    assert [r['card_id'] for r in metrics.load_rows(tmp_path/'tcg/samples.jsonl')]==['test-1','test-1']
+    assert json.loads((tmp_path/'tcg/excluded.json').read_text())==[
+        dict(card_id='test-9',target_id=1025,url=gone_url,reason='http_404')]
+    with pytest.raises(urllib.error.HTTPError) as error:
+        sources.acquire_tcg(tmp_path,labels,make_fetch(403),0,workers=workers)
+    assert error.value.code==403
+
+
 def test_jjmack_revision_is_required():
     sources.verify_jjmack(dict(sha=sources.JJMACK_REV))
     with pytest.raises(ValueError,match='revision mismatch'): sources.verify_jjmack(dict(sha='moving-head'))

@@ -96,16 +96,28 @@ def worker_pool(workers):
     return ThreadPoolExecutor(workers) if workers>1 else contextlib.nullcontext()
 
 
-def prefetch(pool, fetch, jobs, *, delay, attempts):
+GONE = (404, 410)
+
+
+def is_gone(exc):
+    """A permanently missing remote file; callers decide whether that is an exclusion."""
+    return isinstance(exc,urllib.error.HTTPError) and exc.code in GONE
+
+
+def prefetch(pool, fetch, jobs, *, delay, attempts, skip_gone=False):
     """Download (url, path, limit) jobs in parallel; the ordered pass then reuses complete files.
 
     Only the cache is filled here: receipts, identity checks and samples stay in the ordered pass.
+    With skip_gone, 404/410 jobs are left for the ordered pass to record as exclusions.
     """
     if pool is None: return
     futures=[pool.submit(retry_fetch,fetch,url,path,limit=limit,delay=delay,attempts=attempts)
              for url,path,limit in jobs if not path.exists()]
     try:
-        for future in as_completed(futures): future.result()
+        for future in as_completed(futures):
+            try: future.result()
+            except urllib.error.HTTPError as exc:
+                if not (skip_gone and is_gone(exc)): raise
     except BaseException:
         for future in futures: future.cancel()
         raise
@@ -175,7 +187,7 @@ def acquire_tcg(root, labels, fetch, delay=1., attempts=6, workers=1):
 
 def _acquire_tcg(root, labels, fetch, delay, attempts, pool):
     folder=root/'tcg'; folder.mkdir(parents=True,exist_ok=True)
-    allowed={x['id'] for x in labels}; page=1; rows=[]
+    allowed={x['id'] for x in labels}; page=1; rows=[]; excluded=[]
     while True:
         meta=folder/'pages'/f'{page:05}.json'
         record_download(folder,retry_fetch(fetch,
@@ -187,10 +199,17 @@ def _acquire_tcg(root, labels, fetch, delay, attempts, pool):
         cards=tcg_cards(payload,allowed); count=len(payload['data']); total=payload.get('totalCount')
         if type(total) is not int or total<0 or payload.get('count')!=count or count>250:
             raise ValueError('TCG pagination count mismatch')
-        prefetch(pool,fetch,[(c['url'],tcg_image_path(folder,c['id']),5_000_000) for c in cards],delay=delay,attempts=attempts)
+        prefetch(pool,fetch,[(c['url'],tcg_image_path(folder,c['id']),5_000_000) for c in cards],
+                 delay=delay,attempts=attempts,skip_gone=True)
         for card in cards:
             image=tcg_image_path(folder,card['id']); crop=image.with_name(image.stem+'-art.png')
-            receipt=retry_fetch(fetch,card['url'],image,limit=5_000_000,delay=delay,attempts=attempts)
+            try:
+                receipt=retry_fetch(fetch,card['url'],image,limit=5_000_000,delay=delay,attempts=attempts)
+            except urllib.error.HTTPError as exc:
+                # The API still lists a few cards whose image was removed from the CDN.
+                if not is_gone(exc): raise
+                excluded.append(dict(card_id=card['id'],target_id=card['target_id'],url=card['url'],
+                                     reason=f'http_{exc.code}')); continue
             record_download(folder,receipt)
             with Image.open(image) as src:
                 im=src.convert('RGB'); w,h=im.size
@@ -200,6 +219,7 @@ def _acquire_tcg(root, labels, fetch, delay, attempts, pool):
             rows.extend([dict(common,path=image.as_posix(),card_art_crop=False,derived_sha256=receipt['sha256']),
                          dict(common,path=crop.as_posix(),card_art_crop=True,derived_sha256=hashlib.sha256(crop.read_bytes()).hexdigest())])
         write_samples(folder,rows)
+        (folder/'excluded.json').write_text(json.dumps(excluded,indent=2),encoding='utf-8')
         if (page-1)*250+count>=total: break
         if count==0: raise ValueError('TCG empty page before totalCount; retry in a new request')
         page+=1

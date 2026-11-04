@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Rebuild the offline Kanto catalog from cached upstream CSVs and sprites."""
+"""Rebuild the offline National Pokédex catalog from cached upstream CSVs and sprites."""
 import concurrent.futures
 import csv
 import io
 import json
 from pathlib import Path
+import re
 import time
 import urllib.request
 import zipfile
@@ -12,8 +13,14 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 CACHE = ROOT / '.catalog-cache'
 RESOURCES = ROOT / 'iDex' / 'Resources'
+CATALOG = RESOURCES / 'pokemon-national.json'
+# Official-site Chinese/Japanese text for entries PokéAPI lacks; see fetch_official_text.py.
+OFFICIAL_TEXT = Path(__file__).with_name('official-text.json')
 CSV_BASE = 'https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/'
-FILES = ['pokemon.csv', 'pokemon_species_names.csv', 'pokemon_species_flavor_text.csv', 'pokemon_types.csv', 'types.csv', 'pokemon_stats.csv', 'stats.csv']
+FILES = ['pokemon.csv', 'pokemon_species.csv', 'pokemon_species_names.csv', 'pokemon_species_flavor_text.csv', 'pokemon_types.csv', 'types.csv', 'pokemon_stats.csv', 'stats.csv']
+LAST_ID = 1025
+# Last species with an official Black/White sprite; later ones use Smogon's Gen 5-style sprites.
+LAST_BLACK_WHITE_ID = 649
 
 def download(url, path):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,17 +46,25 @@ def main():
     species_names = {(int(r['pokemon_species_id']), int(r['local_language_id'])): r for r in csvs['pokemon_species_names.csv']}
     type_names = {r['id']: r['identifier'] for r in csvs['types.csv']}
     stat_names = {r['id']: r['identifier'] for r in csvs['stats.csv']}
+    species_slugs = {int(r['id']): r['identifier'] for r in csvs['pokemon_species.csv']}
+    generations = {int(r['id']): int(r['generation_id']) for r in csvs['pokemon_species.csv']}
+    official = json.loads(OFFICIAL_TEXT.read_text(encoding='utf-8')) if OFFICIAL_TEXT.exists() else {}
+
+    def localized(language, number, field, upstream):
+        # PokéAPI text wins; official-site text only fills its gaps.
+        return upstream or official.get(language, {}).get(str(number), {}).get(field, '')
+
     flavor = {}
     # Retain the latest available text in each language (CSV is ordered by version id).
     for r in csvs['pokemon_species_flavor_text.csv']:
-        if int(r['species_id']) <= 151 and r['language_id'] in ('9', '11', '12'):
+        if int(r['species_id']) <= LAST_ID and r['language_id'] in ('9', '11', '12'):
             normalized = ' '.join(r['flavor_text'].replace('\f', ' ').split())
             flavor[(int(r['species_id']), int(r['language_id']))] = normalized.replace(' ', '') if r['language_id'] == '12' else normalized
     entries = []
     slug_by_id = {}
     for p in csvs['pokemon.csv']:
         number = int(p['id'])
-        if not 1 <= number <= 151:
+        if not 1 <= number <= LAST_ID:
             continue
         en = species_names[(number, 9)]
         zh = species_names[(number, 12)]
@@ -57,6 +72,7 @@ def main():
         slug_by_id[number] = p['identifier']
         entry = {
             'id': number,
+            'generation': generations[number],
             'englishName': en['name'],
             'chineseName': zh['name'],
             'japaneseName': ja['name'],
@@ -64,19 +80,20 @@ def main():
             'height': int(p['height']) / 10,
             'weight': int(p['weight']) / 10,
             'englishDescription': flavor[(number, 9)],
-            'chineseDescription': flavor[(number, 12)],
-            'japaneseDescription': flavor[(number, 11)],
+            'chineseDescription': localized('zh-Hans', number, 'description', flavor.get((number, 12))),
+            'japaneseDescription': localized('ja', number, 'description', flavor.get((number, 11))),
             'englishGenus': en['genus'],
-            'chineseGenus': zh['genus'],
-            'japaneseGenus': ja['genus'],
+            'chineseGenus': localized('zh-Hans', number, 'genus', zh['genus']),
+            'japaneseGenus': localized('ja', number, 'genus', ja['genus']),
             'stats': [{'name': stat_names[s['stat_id']], 'value': int(s['base_stat'])} for s in csvs['pokemon_stats.csv'] if int(s['pokemon_id']) == number]
         }
         entries.append(entry)
-    assert len(entries) == 151
-    assert all(p['chineseDescription'] and p['japaneseName'] and p['japaneseDescription']
-               and p['japaneseGenus'] and len(p['stats']) == 6 for p in entries)
+    assert [p['id'] for p in entries] == list(range(1, LAST_ID + 1))
+    incomplete = [p['id'] for p in entries if not (p['chineseDescription'] and p['chineseGenus'] and p['japaneseName']
+                  and p['japaneseDescription'] and p['japaneseGenus'] and len(p['stats']) == 6)]
+    assert not incomplete, f'Missing localized text for {incomplete}; run fetch_official_text.py'
     RESOURCES.mkdir(parents=True, exist_ok=True)
-    (RESOURCES / 'pokemon-kanto.json').write_text(json.dumps(entries, ensure_ascii=False, indent=2) + '\n')
+    CATALOG.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     assets = RESOURCES / 'PokemonSprites.xcassets'
     assets.mkdir(exist_ok=True)
     (assets / 'Contents.json').write_text(json.dumps({'info': {'author': 'xcode', 'version': 1}}, indent=2))
@@ -84,8 +101,12 @@ def main():
         number = p['id']
         asset = assets / f'pokemon-{number:03d}.imageset'
         path = asset / 'sprite.png'
-        slug = slug_by_id[number]
-        urls = [f'https://img.pokemondb.net/sprites/black-white/normal/{slug}.png', f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{number}.png']
+        if number <= LAST_BLACK_WHITE_ID:
+            primary = f'https://img.pokemondb.net/sprites/black-white/normal/{slug_by_id[number]}.png'
+        else:
+            showdown_id = re.sub('[^a-z0-9]', '', species_slugs[number])
+            primary = f'https://play.pokemonshowdown.com/sprites/gen5/{showdown_id}.png'
+        urls = [primary, f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{number}.png']
         for source in urls:
             try:
                 data = download(source, path)
@@ -118,7 +139,9 @@ def main():
                     output_name = 'FusionPixel-12px-ja.otf'
                 output = font_dir / output_name
                 output.write_bytes(zipped.read(name))
+    fallbacks = sorted(number for number, source in sources.items() if 'PokeAPI/sprites' in source)
     print(f'Built {len(entries)} English, Simplified Chinese, and Japanese entries and {len(sources)} sprites.')
+    print('Sprites from the PokeAPI fallback:', fallbacks or 'none')
     print('Pikachu:', entries[24])
     print('Fonts:', [p.name for p in font_dir.iterdir()])
 

@@ -19,9 +19,10 @@ struct PokemonCryTests {
         }
         let manifestURL = try #require(Bundle.main.url(forResource: "cry-sources", withExtension: "json"))
         let sources = try JSONDecoder().decode([Source].self, from: Data(contentsOf: manifestURL))
-        #expect(sources.count == 151)
+        let total = PokemonCatalog.shared.entries.count
+        #expect(sources.count == total)
         #expect(Set(sources.map(\.id)) == Set(PokemonCatalog.shared.entries.map(\.id)))
-        #expect(Set(sources.map(\.file)).count == 151)
+        #expect(Set(sources.map(\.file)).count == total)
         for source in sources {
             #expect(source.name == PokemonCatalog.shared.pokemon(id: source.id)?.englishName)
             #expect(source.source.hasSuffix("/latest/\(source.id).ogg"))

@@ -38,7 +38,7 @@ struct CatalogSheet: View {
                 }
             }
             .background(DexTheme.charcoal)
-            .navigationTitle(store.text("Kanto archive", "关都图鉴", "カントー図鑑"))
+            .navigationTitle(store.text("National archive", "全国图鉴", "全国図鑑"))
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: store.text("Name, number or type", "名称、编号或属性", "名前・番号・タイプ"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(store.text("Done", "完成", "完了")) { store.showingCatalog = false }.accessibilityIdentifier("settings-done") } }
@@ -90,7 +90,10 @@ struct SettingsSheet: View {
                     Text(store.text("An independent fan project. Pokémon and its characters belong to Nintendo, Creatures, and GAME FREAK. Not affiliated with or endorsed by them.", "独立粉丝项目。宝可梦及相关角色归任天堂、Creatures及GAME FREAK所有。本项目与其无关联，亦未获得其认可。", "個人によるファンプロジェクトです。ポケモンおよび関連キャラクターの権利は、任天堂・クリーチャーズ・ゲームフリークに帰属します。本プロジェクトは、各社との提携や公認を受けていません。"))
                         .font(.footnote).foregroundStyle(.secondary)
                     Link(store.text("Sprites · Pokémon Database", "像素图 · Pokémon Database", "スプライト · Pokémon Database"), destination: URL(string: "https://pokemondb.net/sprites")!)
+                    Link(store.text("Gen 5-style sprites (No. 650+) · Pokémon Showdown", "第650号起的像素图 · Pokémon Showdown", "No.650以降のスプライト · Pokémon Showdown"), destination: URL(string: "https://play.pokemonshowdown.com/sprites/gen5/")!)
                     Link(store.text("Pokédex data · PokéAPI", "图鉴数据 · PokéAPI", "図鑑データ · PokéAPI"), destination: URL(string: "https://github.com/PokeAPI/pokeapi")!)
+                    Link(store.text("Missing Chinese entries · pokemon.cn", "补充中文图鉴 · 宝可梦官方网站", "中国語の補足 · pokemon.cn"), destination: URL(string: "https://www.pokemon.cn/play/pokedex/")!)
+                    Link(store.text("Missing Japanese entries · Pokémon Zukan", "补充日文图鉴 · ポケモンずかん", "日本語の補足 · ポケモンずかん"), destination: URL(string: "https://zukan.pokemon.co.jp/")!)
                     Text("Press Start 2P · Fusion Pixel · SIL OFL 1.1").font(.caption).foregroundStyle(.secondary)
                 }
             }.navigationTitle(store.text("Device settings", "设备设置", "デバイス設定"))

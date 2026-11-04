@@ -211,7 +211,8 @@ final class DexStore {
         audio.stopSpeaking()
         cancelScan()
         guard let selected else { return }
-        let id = ((selected.id - 1 + delta + 151) % 151) + 1
+        let count = PokemonCatalog.shared.entries.count
+        let id = ((selected.id - 1 + delta + count) % count) + 1
         self.selected = PokemonCatalog.shared.pokemon(id: id)
         confidence = nil
         identified = false

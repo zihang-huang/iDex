@@ -221,7 +221,7 @@ final class iDexUITests: XCTestCase {
         attachScreenshot("orientation-locked-record", app: app)
 
         openCatalog(in: app)
-        assertPresentationDoesNotRotate("Kanto archive", app: app, appFrame: appFrame)
+        assertPresentationDoesNotRotate("National archive", app: app, appFrame: appFrame)
         app.buttons["settings-done"].tap()
         if !expanded { app.buttons["close-record"].tap() }
 
@@ -275,7 +275,7 @@ final class iDexUITests: XCTestCase {
         return app
     }
 
-    private func openCatalog(in app: XCUIApplication, title: String = "Kanto archive") {
+    private func openCatalog(in app: XCUIApplication, title: String = "National archive") {
         let catalog = app.buttons["catalog-button"]
         if !catalog.isHittable {
             app.buttons["record-button"].tap()

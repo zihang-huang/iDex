@@ -58,6 +58,8 @@ struct PokemonStat: Codable, Hashable, Identifiable {
 
 struct Pokemon: Identifiable, Codable, Hashable {
     let id: Int
+    /// Game generation that introduced the species, from 1 (Red/Green) upward.
+    let generation: Int
     let englishName: String
     let chineseName: String
     let japaneseName: String
@@ -93,6 +95,15 @@ struct Pokemon: Identifiable, Codable, Hashable {
 
     func typeNames(in language: AppLanguage) -> [String] {
         types.map { Self.typeName($0, in: language) }
+    }
+
+    func generationTitle(in language: AppLanguage) -> String {
+        let roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"]
+        let chinese = ["一", "二", "三", "四", "五", "六", "七", "八", "九"]
+        guard roman.indices.contains(generation - 1) else {
+            return language.text("GEN. \(generation)", "第\(generation)世代", "第\(generation)世代")
+        }
+        return language.text("GEN. \(roman[generation - 1])", "第\(chinese[generation - 1])世代", "第\(generation)世代")
     }
 
     static func typeName(_ type: String, in language: AppLanguage) -> String {
@@ -153,10 +164,10 @@ struct PokemonCatalog {
     }
 
     private init(bundle: Bundle = .main) {
-        guard let url = bundle.url(forResource: "pokemon-kanto", withExtension: "json"),
+        guard let url = bundle.url(forResource: "pokemon-national", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode([Pokemon].self, from: data) else {
-            assertionFailure("The bundled Kanto catalog is missing or invalid.")
+            assertionFailure("The bundled National Pokédex catalog is missing or invalid.")
             entries = []
             entriesByID = [:]
             searchIndex = []

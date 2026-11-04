@@ -4,6 +4,8 @@ name: Build and test
 
 on:
   push:
+    # The throwaway checkpoint branch only runs the model export workflow.
+    branches-ignore: [model-export]
   workflow_dispatch:
     inputs:
       run_ui_tests:

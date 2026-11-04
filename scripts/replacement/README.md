@@ -134,6 +134,15 @@ python scripts/replacement/fixtures.py --checkpoint /path/to/best.pt \
   --out artifacts/replacement-national/fixtures
 ```
 
+Without a Mac, `.github/workflows/export-model.yml` does the same on a GitHub Mac
+runner: commit the checkpoint as `scripts/replacement/release/national-best.pt` on a
+throwaway `model-export` branch and push it. The job converts FP32/FP16, builds
+fixtures from the app's own bundled sprites (`ci_fixture_manifest.py`, so no training
+photos are uploaded), runs the Swift parity checker with the FP32 package in both
+roles against the checkpoint's PyTorch logits (CPU only, required; all compute units,
+informational), writes the outcome as job annotations, and uploads
+`national-classifier-export`. The regular build workflow ignores that branch.
+
 The Apple harness derives fixed output count from the supplied labels and rejects
 a shape/count mismatch; compare a national export against the same-label source
 references, not the historical Kanto model. New exports use `NationalCandidate-*`

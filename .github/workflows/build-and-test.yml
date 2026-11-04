@@ -49,13 +49,45 @@ jobs:
             -only-testing:iDexTests -resultBundlePath artifacts/unit-tests.xcresult \
             CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM=""
 
+      # Later steps still run after a test failure, so the IPA and UI results are not held back;
+      # the job itself still ends as failed.
       - name: UI tests
-        if: github.event_name == 'push' || inputs.run_ui_tests
+        if: ${{ !cancelled() && (github.event_name == 'push' || inputs.run_ui_tests) }}
         run: |
           xcodebuild test -quiet \
             -project iDex.xcodeproj -scheme iDex -destination "$DESTINATION" \
             -only-testing:iDexUITests -resultBundlePath artifacts/ui-tests.xcresult \
             CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM=""
+
+      # Annotations are readable through the public API without signing in, unlike the logs.
+      - name: Report test failures
+        if: ${{ !cancelled() }}
+        run: |
+          for bundle in artifacts/*.xcresult; do
+            [ -d "$bundle" ] || continue
+            if ! xcrun xcresulttool get test-results summary --path "$bundle" > "$bundle.summary.json"; then
+              echo "::warning::Could not read $bundle"
+              continue
+            fi
+            python3 - "$bundle.summary.json" <<'PY'
+          import json, os, sys
+          data = json.load(open(sys.argv[1], encoding='utf-8'))
+          def message(value):
+              return value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          def prop(value):
+              return message(value).replace(':', '%3A').replace(',', '%2C')
+          name = os.path.basename(sys.argv[1]).split('.')[0]
+          totals = {key: data.get(key) for key in ('result', 'passedTests', 'failedTests', 'skippedTests')}
+          print(name, totals)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write(f'### {name}: {totals}\n')
+              for failure in data.get('testFailures', []):
+                  test = f"{failure.get('targetName', '')}/{failure.get('testName', '')}"
+                  text = failure.get('failureText', '')
+                  print(f'::error title={prop(test)}::{message(text[:2000])}')
+                  summary.write(f'- `{test}`: {text}\n')
+          PY
+          done
 
       - name: Upload test results
         if: always()
@@ -67,6 +99,7 @@ jobs:
           retention-days: 7
 
       - name: Resolve bundle ID
+        if: ${{ !cancelled() }}
         id: meta
         env:
           INPUT_BUNDLE_ID: ${{ inputs.bundle_id }}
@@ -85,6 +118,7 @@ jobs:
 
       # The project ships no shared scheme for device builds, so build the app target directly.
       - name: Build app (unsigned)
+        if: ${{ !cancelled() }}
         env:
           BUNDLE_ID: ${{ steps.meta.outputs.bundle_id }}
         run: |
@@ -94,6 +128,7 @@ jobs:
             DEVELOPMENT_TEAM="" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
       - name: Package IPA
+        if: ${{ !cancelled() }}
         id: pkg
         env:
           SHA: ${{ steps.meta.outputs.sha }}
@@ -117,6 +152,7 @@ jobs:
           echo "ipa=$ipa" >> "$GITHUB_OUTPUT"
 
       - name: Upload IPA
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           path: ${{ steps.pkg.outputs.ipa }}

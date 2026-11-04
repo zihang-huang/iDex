@@ -26,14 +26,14 @@ struct CatalogSheet: View {
                 }.padding(.horizontal, 20).padding(.vertical, 10)
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
-                            Color.clear.frame(height: 0).id(Self.topID)
+                        Color.clear.frame(height: 0).id(Self.topID)
+                        // One lazy grid holds every entry, so scrollTo can reach entries that
+                        // have not been created yet; a grid nested per section could not.
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: layout == .grid ? 12 : 8, pinnedViews: [.sectionHeaders]) {
                             ForEach(sections) { section in
                                 Section {
-                                    LazyVGrid(columns: columns, spacing: layout == .grid ? 12 : 8) {
-                                        ForEach(section.entries) { pokemon in
-                                            entryButton(pokemon).id(pokemon.id)
-                                        }
+                                    ForEach(section.entries) { pokemon in
+                                        entryButton(pokemon).id(pokemon.id)
                                     }
                                 } header: {
                                     sectionHeader(section)
@@ -45,9 +45,13 @@ struct CatalogSheet: View {
                         }
                     }
                     .task {
-                        // Reopen at the record being viewed; wait a frame for the lazy content.
-                        try? await Task.sleep(for: .milliseconds(50))
-                        if let id = store.selected?.id { proxy.scrollTo(id, anchor: .center) }
+                        // Reopen at the record being viewed. Lazy content needs a layout pass
+                        // first, so retry once after a longer pause.
+                        guard let id = store.selected?.id else { return }
+                        for delay in [50, 300] {
+                            try? await Task.sleep(for: .milliseconds(delay))
+                            proxy.scrollTo(id, anchor: .center)
+                        }
                     }
                     .onChange(of: generation) { proxy.scrollTo(Self.topID, anchor: .top) }
                     .onChange(of: layout) {

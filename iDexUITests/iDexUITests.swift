@@ -202,6 +202,18 @@ final class iDexUITests: XCTestCase {
         XCTAssertTrue(app.buttons["pokemon-1"].waitForExistence(timeout: 5))
     }
 
+    func testArchiveOpensAtTheViewedEntry() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-idex.language", "en", "-idex.soundEnabled", "NO", "-idex.lastViewed", "400"]
+        app.launch()
+        XCTAssertTrue(app.buttons["settings-button"].waitForExistence(timeout: 10))
+        openCatalog(in: app)
+        let viewed = app.buttons["pokemon-400"]
+        XCTAssertTrue(viewed.waitForExistence(timeout: 5))
+        XCTAssertTrue(viewed.isHittable)
+        attachScreenshot("catalog-opens-at-400", app: app)
+    }
+
     func testTurningPhoneDoesNotRotateScannerOrPresentations() throws {
         XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }

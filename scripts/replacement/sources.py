@@ -56,6 +56,11 @@ def known_undersized(url):
     return any(d in urlparse(url).path for d in UNDERSIZED_DIRS)
 
 
+# Newer sets (first seen 2026-11-04: me2pt5, page 80) are served from images.scrydex.com:
+# the same 245x342 PNG small images, path /pokemon/<card-id>/small without an extension.
+TCG_IMAGE_HOSTS = (('images.pokemontcg.io','/'), ('images.scrydex.com','/pokemon/'))
+
+
 def tcg_cards(payload, allowed):
     if not isinstance(payload.get('data'),list): raise ValueError('TCG page needs data array')
     result=[]
@@ -68,7 +73,8 @@ def tcg_cards(payload, allowed):
         if not card.get('id') or not card.get('set',{}).get('id') or not card.get('number'):
             raise ValueError('TCG card missing group identity')
         parsed=urlparse(url)
-        if parsed.scheme!='https' or parsed.netloc!='images.pokemontcg.io':
+        if parsed.scheme!='https' or not any(parsed.netloc==host and parsed.path.startswith(prefix)
+                                             for host,prefix in TCG_IMAGE_HOSTS):
             raise ValueError(f'unexpected TCG image host: {url}')
         result.append(dict(id=card['id'],target_id=ids[0],url=url,
                            source_group=f'tcg:{card["set"]["id"]}-{card["number"]}'))

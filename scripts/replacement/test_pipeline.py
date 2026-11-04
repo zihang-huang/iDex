@@ -136,6 +136,12 @@ def test_tcg_response_filter_and_identity():
     payload=fixture('tcg.json')
     assert [r['target_id'] for r in sources.tcg_cards(payload,{1,1025})]==[1025,1]
     assert sources.tcg_cards(payload,{1025})[0]['source_group']=='tcg:test-1'
+    payload['data'][0]['images']=dict(small='https://images.scrydex.com/pokemon/test-1/small')
+    assert sources.tcg_cards(payload,{1025})[0]['url'].endswith('/test-1/small')
+    for bad in ('https://images.scrydex.com/other/test-1/small','https://example.com/pokemon/test-1/small',
+                'http://images.pokemontcg.io/test/1.png'):
+        payload['data'][0]['images']=dict(small=bad)
+        with pytest.raises(ValueError,match='unexpected TCG image host'): sources.tcg_cards(payload,{1025})
     payload['data'][0]['nationalPokedexNumbers']=[1025,1025]
     assert not sources.tcg_cards(payload,{1025})
 

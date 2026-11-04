@@ -106,7 +106,7 @@ private struct ScannerPanel: View {
                 HStack {
                     pixel(store.text("OPTICAL SENSOR", "光学传感器", "光学センサー"), 7).foregroundStyle(.white.opacity(0.65))
                     Spacer()
-                    pixel(store.text("KANTO / 01", "关都 / 01", "カントー / 01"), 7).foregroundStyle(.white.opacity(0.65))
+                    pixel(store.text("NATIONAL / 01", "全国 / 01", "全国 / 01"), 7).foregroundStyle(.white.opacity(0.65))
                 }.frame(width: proxy.size.width - 98).offset(x: 49, y: 146)
                 viewfinder(side: side).frame(width: side + 34, height: side + 34)
                     .position(x: proxy.size.width / 2, y: layout.viewfinder.midY)

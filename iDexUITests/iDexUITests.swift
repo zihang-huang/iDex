@@ -129,7 +129,7 @@ final class iDexUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["こうげき"].exists)
         attachScreenshot("record-stats-ja", app: app)
 
-        openCatalog(in: app, title: "カントー図鑑")
+        openCatalog(in: app, title: "全国図鑑")
         let search = app.searchFields.firstMatch
         if !search.exists {
             let revealSearch = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "検索", "Search")).firstMatch

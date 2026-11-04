@@ -41,12 +41,17 @@ jobs:
           xcodebuild -version
           xcodebuild -list -project iDex.xcodeproj
 
+      # The hosted simulator never starts AVSpeechSynthesizer output (isSpeaking stays false on
+      # every run, and the unmodified upstream app crashes in the audio engine there), so the two
+      # speech-startup tests are skipped in CI only. Speech is verified on the physical device.
       - name: Unit tests
         run: |
           mkdir -p artifacts
           xcodebuild test -quiet \
             -project iDex.xcodeproj -scheme iDex -destination "$DESTINATION" \
             -only-testing:iDexTests -resultBundlePath artifacts/unit-tests.xcresult \
+            -skip-testing:"iDexTests/AudioPlaybackTests/silentNativeSpeechReportsItsActualStartAndFinish()" \
+            -skip-testing:"iDexTests/ScanResponsivenessTests/fullScanKeepsRenderingThroughSpeechStartup(language:)" \
             CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM=""
 
       # Later steps still run after a test failure, so the IPA and UI results are not held back;
@@ -65,25 +70,41 @@ jobs:
         run: |
           for bundle in artifacts/*.xcresult; do
             [ -d "$bundle" ] || continue
-            if ! xcrun xcresulttool get test-results summary --path "$bundle" > "$bundle.summary.json"; then
-              echo "::warning::Could not read $bundle"
-              continue
-            fi
-            python3 - "$bundle.summary.json" <<'PY'
-          import json, os, sys
-          data = json.load(open(sys.argv[1], encoding='utf-8'))
+            python3 - "$bundle" <<'PY'
+          import json, os, subprocess, sys
+          bundle = sys.argv[1]
+          def result(kind):
+              out = subprocess.run(['xcrun', 'xcresulttool', 'get', 'test-results', kind, '--path', bundle],
+                                   capture_output=True, text=True, encoding='utf-8')
+              if out.returncode or not out.stdout.strip():
+                  print(f'::warning::xcresulttool {kind} failed for {bundle}: {out.stderr.strip()[:300]}')
+                  return {}
+              return json.loads(out.stdout)
           def message(value):
               return value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           def prop(value):
               return message(value).replace(':', '%3A').replace(',', '%2C')
-          name = os.path.basename(sys.argv[1]).split('.')[0]
-          totals = {key: data.get(key) for key in ('result', 'passedTests', 'failedTests', 'skippedTests')}
+          summary_data = result('summary')
+          name = os.path.basename(bundle).split('.')[0]
+          totals = {key: summary_data.get(key) for key in ('result', 'passedTests', 'failedTests', 'skippedTests')}
           print(name, totals)
+          # Failure-message nodes carry "file:line: message", which the summary's failureText lacks.
+          failures = []
+          def walk(node, test=''):
+              if node.get('nodeType') == 'Test Case':
+                  test = node.get('nodeIdentifier') or node.get('name', '')
+              if node.get('nodeType') == 'Failure Message':
+                  failures.append((test, node.get('name', '')))
+              for child in node.get('children', []):
+                  walk(child, test)
+          for node in result('tests').get('testNodes', []):
+              walk(node)
+          if not failures:
+              failures = [(f"{f.get('targetName', '')}/{f.get('testName', '')}", f.get('failureText', ''))
+                          for f in summary_data.get('testFailures', [])]
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
               summary.write(f'### {name}: {totals}\n')
-              for failure in data.get('testFailures', []):
-                  test = f"{failure.get('targetName', '')}/{failure.get('testName', '')}"
-                  text = failure.get('failureText', '')
+              for test, text in failures:
                   print(f'::error title={prop(test)}::{message(text[:2000])}')
                   summary.write(f'- `{test}`: {text}\n')
           PY

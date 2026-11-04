@@ -34,8 +34,8 @@ $checkpoint = "$runRoot/runs/efficientnet224/best.pt"
 & $trainPython scripts/replacement/acquire.py data --dataset JJMack/pokemon-classification-gen1-9 --root $sources --labels $labels
 & $trainPython scripts/replacement/acquire.py data --dataset keremberke/pokemon-classification --root $sources --labels $labels
 & $trainPython scripts/replacement/acquire.py data --dataset sgtsaughter/pokemon-classification-images-151 --root $sources --labels $labels
-& $trainPython scripts/replacement/acquire.py sprites --root $sources --labels $labels --delay 1 --attempts 6
-& $trainPython scripts/replacement/acquire.py tcg --root $sources --labels $labels --delay 1 --attempts 6
+& $trainPython scripts/replacement/acquire.py sprites --root $sources --labels $labels --delay 0.15 --attempts 6 --workers 8
+& $trainPython scripts/replacement/acquire.py tcg --root $sources --labels $labels --delay 0.15 --attempts 8 --workers 8
 & $trainPython scripts/replacement/acquire.py negatives --root $sources --labels $labels
 & $trainPython scripts/replacement/data.py --root $runRoot --labels $labels --min-groups 5
 & $trainPython scripts/replacement/refine_groups.py --root $runRoot --labels $labels --min-groups 5
@@ -54,6 +54,14 @@ $checkpoint = "$runRoot/runs/efficientnet224/best.pt"
 Stop on any nonzero exit; do not proceed with a failed acquisition. `sprites` and
 `tcg` cache complete API responses/pages and individual images. Rerunning the same
 command resumes from those files; an interrupted individual transfer is retried.
+Downloads reuse one keep-alive connection per thread (a fresh TLS tunnel through a
+local proxy measured 4–10 s, a reused one ~0.65 s). `--workers N` warms the image
+cache with N parallel downloads first; receipts, identity checks and samples are
+still produced by the original ordered pass, so the output matches `--workers 1`.
+`--delay` applies per worker. PokeAPI directories measured to decode below 64 px
+(`sources.UNDERSIZED_DIRS`: generation I–II and the generation III–VII icons) are
+recorded in `excluded.json` as `known_undersized_dir` without a download. Newer-game
+sprites are 34-frame 512 px WebP/GIF animations (0.5–25 MB); only frame 0 is kept.
 Transient 408/429/500/502/503/504 and network failures use bounded exponential
 backoff. Receipts in each source's `downloads.jsonl` retain URL, bytes and SHA-256.
 `samples.jsonl` retains source identities and derivation flags. Sprites are default

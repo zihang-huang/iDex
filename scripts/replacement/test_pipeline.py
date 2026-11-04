@@ -156,7 +156,22 @@ def test_new_source_retry_backoff_and_cached_resume(tmp_path):
                             'https://fixture.invalid',path,limit=100,sleep=sleeps.append)
 
 
-def test_sprite_acquisition_gif_first_frame_size_exclusion_and_receipts(tmp_path):
+def test_fetch_maps_http_status_to_urllib_error(tmp_path, monkeypatch):
+    class Response:
+        status_code=404; reason='Not Found'; headers={}
+        def __enter__(self): return self
+        def __exit__(self,*args): return False
+        def iter_content(self,size): return iter([b'not an image'])
+    class Session:
+        def get(self,url,**kwargs): return Response()
+    monkeypatch.setattr(acquire,'_session',Session)
+    with pytest.raises(urllib.error.HTTPError) as error:
+        acquire.fetch('https://fixture.invalid/x.png',tmp_path/'x.png',100)
+    assert error.value.code==404 and not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize('workers',[1,3])
+def test_sprite_acquisition_gif_first_frame_size_exclusion_and_receipts(tmp_path, workers):
     payload=fixture('sprites.json');calls=[]
     def fetch(url,target,limit):
         target.parent.mkdir(parents=True,exist_ok=True)
@@ -168,19 +183,22 @@ def test_sprite_acquisition_gif_first_frame_size_exclusion_and_receipts(tmp_path
                 a.save(target,format='GIF',save_all=True,append_images=[b])
             else: target.write_bytes(image_bytes((32,32) if '/icons/' in url else (96,96),True))
         return dict(url=url,path=str(target),bytes=target.stat().st_size,sha256=sha(target))
-    sources.acquire_sprites(tmp_path,[dict(id=1025,name='pecharunt')],fetch,0)
+    sources.acquire_sprites(tmp_path,[dict(id=1025,name='pecharunt')],fetch,0,workers=workers)
     rows=metrics.load_rows(tmp_path/'sprites/samples.jsonl')
-    assert len(rows)==6 and all(r['source_group'].startswith('pokeapi:1025:') for r in rows)
+    assert len(rows)==5 and all(r['source_group'].startswith('pokeapi:1025:') for r in rows)
+    assert not any('/generation-i/' in url for url in calls)
     gif=next(r for r in rows if r['family']=='showdown')
     with Image.open(gif['path']) as im: assert im.getpixel((0,0))[:3]==(255,0,0) and not getattr(im,'is_animated',False)
     receipts=metrics.load_rows(tmp_path/'sprites/downloads.jsonl')
     assert all({'url','bytes','sha256'}<=r.keys() for r in receipts)
     previous=len(calls);sources.acquire_sprites(tmp_path,[dict(id=1025,name='pecharunt')],fetch,0)
     assert len(calls)==previous
-    assert len(json.loads((tmp_path/'sprites/excluded.json').read_text()))==1
+    excluded=json.loads((tmp_path/'sprites/excluded.json').read_text())
+    assert sorted(x['reason'] for x in excluded)==['known_undersized_dir','under_64px']
 
 
-def test_tcg_acquisition_all_pages_and_crops_share_group(tmp_path):
+@pytest.mark.parametrize('workers',[1,3])
+def test_tcg_acquisition_all_pages_and_crops_share_group(tmp_path, workers):
     calls=[];valid=fixture('tcg.json')['data'][0]
     def fetch(url,target,limit):
         target.parent.mkdir(parents=True,exist_ok=True)
@@ -195,7 +213,7 @@ def test_tcg_acquisition_all_pages_and_crops_share_group(tmp_path):
             else: target.write_bytes(image_bytes((245,342)))
         return dict(url=url,path=str(target),bytes=target.stat().st_size,sha256=sha(target))
     labels=[dict(id=1025,name='pecharunt')]
-    sources.acquire_tcg(tmp_path,labels,fetch,0)
+    sources.acquire_tcg(tmp_path,labels,fetch,0,workers=workers)
     rows=metrics.load_rows(tmp_path/'tcg/samples.jsonl')
     assert len(rows)==4 and rows[0]['source_group']==rows[1]['source_group']=='tcg:test-1'
     assert [r['card_art_crop'] for r in rows]==[False,True,False,True]

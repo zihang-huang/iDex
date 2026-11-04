@@ -1,8 +1,10 @@
 """PokeAPI/TCG parsing and resumable acquisition, without remote Python code."""
+import contextlib
 import hashlib
 import json
 import time
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlparse
 from PIL import Image
@@ -40,6 +42,20 @@ def sprite_urls(payload):
     return result
 
 
+# Measured on dex 1-89 (2026-11-04): every image in these PokeAPI directories decodes below
+# 64 px, so they are recorded as excluded without a download. Newer-game icons are larger
+# and are not listed. Some Let's Go animations exceed 25 MB, hence the per-file budget.
+UNDERSIZED_DIRS = tuple(f'/sprites/pokemon/versions/{d}/' for d in (
+    'generation-i', 'generation-ii', 'generation-iii/icons', 'generation-iv/icons',
+    'generation-v/icons', 'generation-vi/icons', 'generation-vii/icons',
+    'generation-vii/lets-go-pikachu-lets-go-eevee/icons'))
+SPRITE_LIMIT = 40_000_000
+
+
+def known_undersized(url):
+    return any(d in urlparse(url).path for d in UNDERSIZED_DIRS)
+
+
 def tcg_cards(payload, allowed):
     if not isinstance(payload.get('data'),list): raise ValueError('TCG page needs data array')
     result=[]
@@ -74,6 +90,36 @@ def retry_fetch(fetch, url, path, *, limit, attempts=6, delay=1., sleep=time.sle
             sleep(max(delay,1.)*2**attempt)
 
 
+def worker_pool(workers):
+    """Thread pool for cache warming; one worker keeps the original strictly sequential path."""
+    if type(workers) is not int or workers<1: raise ValueError('workers must be a positive integer')
+    return ThreadPoolExecutor(workers) if workers>1 else contextlib.nullcontext()
+
+
+def prefetch(pool, fetch, jobs, *, delay, attempts):
+    """Download (url, path, limit) jobs in parallel; the ordered pass then reuses complete files.
+
+    Only the cache is filled here: receipts, identity checks and samples stay in the ordered pass.
+    """
+    if pool is None: return
+    futures=[pool.submit(retry_fetch,fetch,url,path,limit=limit,delay=delay,attempts=attempts)
+             for url,path,limit in jobs if not path.exists()]
+    try:
+        for future in as_completed(futures): future.result()
+    except BaseException:
+        for future in futures: future.cancel()
+        raise
+
+
+def sprite_raw_path(folder, dex, url):
+    key=f'{dex}-'+hashlib.sha256(url.encode()).hexdigest()[:20]
+    return folder/'raw'/(key+Path(urlparse(url).path).suffix)
+
+
+def tcg_image_path(folder, card_id):
+    return folder/'images'/(hashlib.sha256(card_id.encode()).hexdigest()[:24]+'.jpg')
+
+
 def record_download(folder, record):
     with (folder/'downloads.jsonl').open('a',encoding='utf-8') as out:
         out.write(json.dumps(record)+'\n')
@@ -84,19 +130,29 @@ def write_samples(folder, rows):
     partial.write_text(''.join(json.dumps(r)+'\n' for r in rows),encoding='utf-8'); partial.replace(path)
 
 
-def acquire_sprites(root, labels, fetch, delay=1., attempts=6):
+def acquire_sprites(root, labels, fetch, delay=1., attempts=6, workers=1):
     folder=root/'sprites'; folder.mkdir(parents=True,exist_ok=True); rows=[]; excluded=[]
+    api_url=lambda dex: f'https://pokeapi.co/api/v2/pokemon/{dex}'
+    api_path=lambda dex: folder/'api'/f'{dex}.json'
+    with worker_pool(workers) as pool:
+        prefetch(pool,fetch,[(api_url(x['id']),api_path(x['id']),2_000_000) for x in labels],delay=delay,attempts=attempts)
+        if pool is not None:
+            prefetch(pool,fetch,[(spec['url'],sprite_raw_path(folder,x['id'],spec['url']),SPRITE_LIMIT)
+                                 for x in labels
+                                 for spec in sprite_urls(json.loads(api_path(x['id']).read_text(encoding='utf-8')))
+                                 if not known_undersized(spec['url'])],
+                     delay=delay,attempts=attempts)
     for label in labels:
-        dex=label['id']; meta=folder/'api'/f'{dex}.json'
-        record_download(folder,retry_fetch(fetch,f'https://pokeapi.co/api/v2/pokemon/{dex}',meta,limit=2_000_000,delay=delay,attempts=attempts))
+        dex=label['id']; meta=api_path(dex)
+        record_download(folder,retry_fetch(fetch,api_url(dex),meta,limit=2_000_000,delay=delay,attempts=attempts))
         payload=json.loads(meta.read_text(encoding='utf-8'))
         if payload.get('id')!=dex or payload.get('is_default') is not True:
             raise ValueError(f'PokeAPI default-form identity mismatch: {dex}')
         for spec in sprite_urls(payload):
-            key=f'{dex}-'+hashlib.sha256(spec['url'].encode()).hexdigest()[:20]
-            suffix=Path(urlparse(spec['url']).path).suffix
-            raw=folder/'raw'/(key+suffix); image=folder/'images'/(key+'.png')
-            receipt=retry_fetch(fetch,spec['url'],raw,limit=20_000_000,delay=delay,attempts=attempts)
+            if known_undersized(spec['url']):
+                excluded.append(dict(target_id=dex,url=spec['url'],reason='known_undersized_dir')); continue
+            raw=sprite_raw_path(folder,dex,spec['url']); image=folder/'images'/(raw.stem+'.png')
+            receipt=retry_fetch(fetch,spec['url'],raw,limit=SPRITE_LIMIT,delay=delay,attempts=attempts)
             record_download(folder,receipt)
             with Image.open(raw) as src:
                 src.seek(0)
@@ -112,7 +168,12 @@ def acquire_sprites(root, labels, fetch, delay=1., attempts=6):
     (folder/'excluded.json').write_text(json.dumps(excluded,indent=2),encoding='utf-8')
 
 
-def acquire_tcg(root, labels, fetch, delay=1., attempts=6):
+def acquire_tcg(root, labels, fetch, delay=1., attempts=6, workers=1):
+    with worker_pool(workers) as pool:
+        _acquire_tcg(root, labels, fetch, delay, attempts, pool)
+
+
+def _acquire_tcg(root, labels, fetch, delay, attempts, pool):
     folder=root/'tcg'; folder.mkdir(parents=True,exist_ok=True)
     allowed={x['id'] for x in labels}; page=1; rows=[]
     while True:
@@ -126,9 +187,9 @@ def acquire_tcg(root, labels, fetch, delay=1., attempts=6):
         cards=tcg_cards(payload,allowed); count=len(payload['data']); total=payload.get('totalCount')
         if type(total) is not int or total<0 or payload.get('count')!=count or count>250:
             raise ValueError('TCG pagination count mismatch')
+        prefetch(pool,fetch,[(c['url'],tcg_image_path(folder,c['id']),5_000_000) for c in cards],delay=delay,attempts=attempts)
         for card in cards:
-            key=hashlib.sha256(card['id'].encode()).hexdigest()[:24]
-            image=folder/'images'/(key+'.jpg'); crop=folder/'images'/(key+'-art.png')
+            image=tcg_image_path(folder,card['id']); crop=image.with_name(image.stem+'-art.png')
             receipt=retry_fetch(fetch,card['url'],image,limit=5_000_000,delay=delay,attempts=attempts)
             record_download(folder,receipt)
             with Image.open(image) as src:

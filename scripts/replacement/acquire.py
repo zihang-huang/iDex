@@ -7,7 +7,9 @@ import argparse
 import hashlib
 import json
 import time
+import threading
 import concurrent.futures
+import urllib.error
 import urllib.request
 from pathlib import Path
 from pathlib import PurePosixPath
@@ -27,18 +29,34 @@ def sha(path):
     return h.hexdigest()
 
 
+_local = threading.local()
+
+
+def _session():
+    """One keep-alive session per thread: each new TLS tunnel through a local proxy costs seconds."""
+    session = getattr(_local, 'session', None)
+    if session is None:
+        import requests
+        session = _local.session = requests.Session()
+        session.headers['User-Agent'] = 'iDex-local-research/1.0'
+    return session
+
+
 def fetch(url, target, limit=2_000_000_000, expected=None):
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.exists():
         partial = target.with_suffix(target.suffix + '.partial')
-        request = urllib.request.Request(url, headers={'User-Agent': 'iDex-local-research/1.0'})
         count = 0
-        with urllib.request.urlopen(request, timeout=90) as response, partial.open('wb') as output:
+        with _session().get(url, stream=True, timeout=90) as response:
+            # Same error type as urllib so retry_fetch keeps its retryable-status contract.
+            if response.status_code >= 400:
+                raise urllib.error.HTTPError(url, response.status_code, response.reason, response.headers, None)
             if int(response.headers.get('Content-Length', 0)) > limit: raise ValueError('download exceeds budget')
-            while b := response.read(1024*1024):
-                count += len(b)
-                if count > limit: raise ValueError('download exceeds budget')
-                output.write(b)
+            with partial.open('wb') as output:
+                for b in response.iter_content(1024*1024):
+                    count += len(b)
+                    if count > limit: raise ValueError('download exceeds budget')
+                    output.write(b)
         partial.replace(target)
     digest = sha(target)
     if expected and digest != expected: raise ValueError(f'checksum mismatch: {target}')
@@ -86,10 +104,12 @@ def main():
     add_labels(p)
     p.add_argument('--delay',type=float,default=1.,help='minimum delay after each uncached new-source request')
     p.add_argument('--attempts',type=int,default=6)
+    p.add_argument('--workers',type=int,default=1,help='parallel cache-warming downloads for sprites/tcg; --delay applies per worker')
     a = p.parse_args(); a.root.mkdir(parents=True, exist_ok=True)
     labels=read_labels(a.labels)
     if a.stage in ('sprites','tcg'):
-        acquire_sprites(a.root,labels,fetch,a.delay,a.attempts) if a.stage=='sprites' else acquire_tcg(a.root,labels,fetch,a.delay,a.attempts)
+        stage=acquire_sprites if a.stage=='sprites' else acquire_tcg
+        stage(a.root,labels,fetch,a.delay,a.attempts,a.workers)
         return
     records = []
     if a.stage=='negatives':

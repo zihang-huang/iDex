@@ -71,15 +71,28 @@ jobs:
           for bundle in artifacts/*.xcresult; do
             [ -d "$bundle" ] || continue
             python3 - "$bundle" <<'PY'
-          import json, os, subprocess, sys
+          import json, os, re, subprocess, sys
           bundle = sys.argv[1]
-          def result(kind):
-              out = subprocess.run(['xcrun', 'xcresulttool', 'get', 'test-results', kind, '--path', bundle],
+          def run(*arguments):
+              out = subprocess.run(['xcrun', 'xcresulttool', 'get', *arguments, '--path', bundle],
                                    capture_output=True, text=True, encoding='utf-8')
               if out.returncode or not out.stdout.strip():
-                  print(f'::warning::xcresulttool {kind} failed for {bundle}: {out.stderr.strip()[:300]}')
+                  print(f'::warning::xcresulttool {" ".join(arguments)} failed for {bundle}: {out.stderr.strip()[:300]}')
                   return {}
               return json.loads(out.stdout)
+          def result(kind):
+              return run('test-results', kind)
+          # The legacy root record's failure summaries carry the source file and line.
+          def located_failures():
+              values = run('object', '--legacy', '--format', 'json').get('issues', {}).get('testFailureSummaries', {}).get('_values', [])
+              found = []
+              for value in values:
+                  url = value.get('documentLocationInCreatingWorkspace', {}).get('url', {}).get('_value', '')
+                  line = re.search(r'StartingLineNumber=(\d+)', url)
+                  where = url.split('#')[0].rsplit('/', 1)[-1] + (f' line {int(line.group(1)) + 1}' if line else '') if url else ''
+                  text = value.get('message', {}).get('_value', '')
+                  found.append((value.get('testCaseName', {}).get('_value', ''), f'{where}: {text}' if where else text))
+              return found
           def message(value):
               return value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           def prop(value):
@@ -88,8 +101,7 @@ jobs:
           name = os.path.basename(bundle).split('.')[0]
           totals = {key: summary_data.get(key) for key in ('result', 'passedTests', 'failedTests', 'skippedTests')}
           print(name, totals)
-          # Failure-message nodes carry "file:line: message", which the summary's failureText lacks.
-          failures = []
+          failures = located_failures()
           def walk(node, test=''):
               if node.get('nodeType') == 'Test Case':
                   test = node.get('nodeIdentifier') or node.get('name', '')
@@ -97,8 +109,9 @@ jobs:
                   failures.append((test, node.get('name', '')))
               for child in node.get('children', []):
                   walk(child, test)
-          for node in result('tests').get('testNodes', []):
-              walk(node)
+          if not failures:
+              for node in result('tests').get('testNodes', []):
+                  walk(node)
           if not failures:
               failures = [(f"{f.get('targetName', '')}/{f.get('testName', '')}", f.get('failureText', ''))
                           for f in summary_data.get('testFailures', [])]

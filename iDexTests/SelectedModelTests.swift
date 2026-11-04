@@ -1,12 +1,13 @@
 import CoreML
 import Foundation
 import Testing
+@testable import iDex
 
 @Suite("Selected local FP32 classifier")
 @MainActor
 struct SelectedModelTests {
     @Test func bundledModelIsTheVerifiedFP32Checkpoint() throws {
-        let url = try #require(Bundle.main.url(forResource: "KantoClassifier", withExtension: "mlmodelc"))
+        let url = try #require(Bundle.main.url(forResource: PokemonClassifier.modelName, withExtension: "mlmodelc"))
         let configuration = MLModelConfiguration()
         #if targetEnvironment(simulator)
         configuration.computeUnits = .cpuOnly

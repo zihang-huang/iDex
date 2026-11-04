@@ -35,6 +35,12 @@ enum RecognitionError: LocalizedError {
 
 /// Serializes model loading and inference away from the UI actor. No image leaves the device.
 actor PokemonClassifier {
+    /// Bundled Core ML model; its logits follow `pokemon_labels.json` order.
+    static let modelName = "KantoClassifier"
+    /// Automatic discovery needs both; heuristics, not a calibrated probability (see MODEL.md).
+    static let minimumConfidence = 0.25
+    static let minimumLogitMargin = 0.5
+
     private var model: MLModel?
     private var labels: [Label] = []
 
@@ -77,7 +83,7 @@ actor PokemonClassifier {
         let first = candidates[0]
         // Always offer the top candidate. Acceptance only controls automatic discovery
         // and narration; these relaxed heuristics are not an unknown-object detector.
-        let accepted = first.confidence >= 0.25 && margin >= 0.5 ? first : nil
+        let accepted = first.confidence >= Self.minimumConfidence && margin >= Self.minimumLogitMargin ? first : nil
         return RecognitionResult(candidates: candidates, accepted: accepted, logitMargin: margin)
     }
 
@@ -85,13 +91,14 @@ actor PokemonClassifier {
         guard model == nil else { return }
         let interval = DexPerformance.begin("Model Load")
         defer { DexPerformance.end("Model Load", interval) }
-        guard let url = Bundle.main.url(forResource: "KantoClassifier", withExtension: "mlmodelc") else {
+        guard let url = Bundle.main.url(forResource: Self.modelName, withExtension: "mlmodelc") else {
             throw RecognitionError.missingModel
         }
+        // Labels must be dex IDs 1...N in order; the output count is checked per prediction.
         guard let labelURL = Bundle.main.url(forResource: "pokemon_labels", withExtension: "json"),
               let loadedLabels = try? JSONDecoder().decode([Label].self, from: Data(contentsOf: labelURL)),
-              loadedLabels.count == 151,
-              Set(loadedLabels.map(\.id)) == Set(1...151) else {
+              !loadedLabels.isEmpty,
+              loadedLabels.map(\.id) == Array(1...loadedLabels.count) else {
             throw RecognitionError.invalidLabels
         }
         let configuration = MLModelConfiguration()

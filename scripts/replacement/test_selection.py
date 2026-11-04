@@ -15,9 +15,12 @@ from unittest.mock import patch
 import torch
 
 import choose_candidate
+from labels import read_labels
+
+CLASS_COUNT = len(read_labels())
 
 
-LABELS = [dict(id=i, name=f'class-{i}') for i in range(1, 152)]
+LABELS = [dict(id=i, name=f'class-{i}') for i in range(1, CLASS_COUNT+1)]
 
 
 def sha(path):
@@ -25,12 +28,12 @@ def sha(path):
 
 
 def prediction(identity, target, split, source, confident=True):
-    logits = [0.] * 151
+    logits = [0.] * CLASS_COUNT
     if confident:
         logits[0] = 30.
     return dict(sha256=hashlib.sha256(identity.encode()).hexdigest(), group=identity,
                 target_id=target, source=source, domain='synthetic', split=split,
-                label_ids=list(range(1, 152)), logits=logits)
+                label_ids=list(range(1, CLASS_COUNT+1)), logits=logits)
 
 
 class SelectionTests(unittest.TestCase):
@@ -39,6 +42,8 @@ class SelectionTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent)
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+        self.labels_path = self.root / 'labels.json'
+        self.labels_path.write_text(json.dumps(LABELS),encoding='utf-8')
         self.manifest = self.root / 'manifest.jsonl'
         self.predictions = self.root / 'validation.jsonl'
         self.receipt = self.predictions.with_suffix('.metadata.json')
@@ -79,7 +84,7 @@ class SelectionTests(unittest.TestCase):
 
     def select(self):
         argv = ['choose_candidate.py', '--checkpoint', str(self.checkpoint),
-                '--predictions', str(self.predictions), '--out', str(self.output)]
+                '--predictions', str(self.predictions), '--out', str(self.output), '--labels', str(self.labels_path)]
         with patch('sys.argv', argv), patch('sys.stdout', io.StringIO()):
             choose_candidate.main()
         return json.loads(self.output.read_text())
@@ -210,16 +215,16 @@ class SelectionTests(unittest.TestCase):
         self.state['labels'].reverse()
         self.save_checkpoint()
         self.save_receipt()
-        self.assert_rejected('explicit label order required')
+        self.assert_rejected('checkpoint labels mismatch')
 
     def test_strict_metrics_gate_rejects_wrong_logit_count_and_nonfinite(self):
         original = copy.deepcopy(self.rows)
-        for bad in ([0.] * 150, [float('nan')] + [0.] * 150):
+        for bad in ([0.] * (CLASS_COUNT-1), [float('nan')] + [0.] * (CLASS_COUNT-1)):
             with self.subTest(length=len(bad)):
                 self.rows = copy.deepcopy(original)
                 self.rows[0]['logits'] = bad
                 self.save_predictions()
-                self.assert_rejected('151 logits|logits must be finite')
+                self.assert_rejected(f'{CLASS_COUNT} logits|logits must be finite')
 
     def test_test_split_cannot_influence_selection(self):
         self.rows[0]['split'] = 'test_public'

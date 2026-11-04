@@ -13,19 +13,22 @@ import unittest
 from unittest.mock import patch
 
 import metrics as evaluation
+from labels import read_labels
+
+CLASS_COUNT = len(read_labels())
 
 
-LABELS = [dict(id=i, name=f'class-{i}') for i in range(1, 152)]
+LABELS = [dict(id=i, name=f'class-{i}') for i in range(1, CLASS_COUNT+1)]
 
 
 def row(identity, target, winner=1, group=None, logits=None):
     if logits is None:
-        logits = [-20.] * 151
+        logits = [-20.] * CLASS_COUNT
         logits[winner - 1] = 20.
     return dict(sha256=hashlib.sha256(str(identity).encode()).hexdigest(),
                 group=str(identity) if group is None else group, target_id=target,
                 source='synthetic', domain='unit', split='test_public',
-                label_ids=list(range(1, 152)), logits=logits)
+                label_ids=list(range(1, CLASS_COUNT+1)), logits=logits)
 
 
 class MetricTests(unittest.TestCase):
@@ -50,19 +53,19 @@ class MetricTests(unittest.TestCase):
 
     def test_uniform_predictions_have_analytic_calibration(self):
         # Uniform predictions have probability 1/151 and deterministic class-1 ties.
-        result = evaluation.metrics([row('u', 2, logits=[0.] * 151)], LABELS)
+        result = evaluation.metrics([row('u', 2, logits=[0.] * CLASS_COUNT)], LABELS)
         self.assertEqual(result['top1'], 0)
         self.assertEqual(result['top3'], 1)
         self.assertEqual(result['top5'], 1)
-        self.assertAlmostEqual(result['nll'], math.log(151))
-        self.assertAlmostEqual(result['brier'], 150 / 151)
-        self.assertAlmostEqual(result['ece'], 1 / 151)
+        self.assertAlmostEqual(result['nll'], math.log(CLASS_COUNT))
+        self.assertAlmostEqual(result['brier'], (CLASS_COUNT-1) / CLASS_COUNT)
+        self.assertAlmostEqual(result['ece'], 1 / CLASS_COUNT)
         self.assertEqual(result['accepted_coverage'], 0)
         self.assertIsNone(result['accepted_accuracy'])
         self.assertIsNone(result['unknown_far'])
 
     def test_rank_three_and_five_boundaries(self):
-        logits = list(range(151, 0, -1))
+        logits = list(range(CLASS_COUNT, 0, -1))
         result = evaluation.metrics([row('three', 3, logits=logits), row('five', 5, logits=logits),
                                      row('six', 6, logits=logits)], LABELS)
         self.assertEqual(result['top1'], 0)
@@ -70,7 +73,7 @@ class MetricTests(unittest.TestCase):
         self.assertAlmostEqual(result['top5'], 2 / 3)
 
     def test_temperature_changes_confidence_but_not_raw_margin(self):
-        logits = [-100.] * 151
+        logits = [-100.] * CLASS_COUNT
         logits[0:2] = [1., 0.]
         rows = [row('temperature', 1, logits=logits)]
         # At T=2 confidence is about .622, while raw margin remains 1.
@@ -94,16 +97,16 @@ class MetricTests(unittest.TestCase):
 
     def test_explicit_non_numeric_label_order_is_respected(self):
         labels = LABELS[::-1]
-        sample = row('reverse', 151)
-        sample['label_ids'] = list(range(151, 0, -1))
+        sample = row('reverse', CLASS_COUNT)
+        sample['label_ids'] = list(range(CLASS_COUNT, 0, -1))
         result = evaluation.metrics([sample], labels)
         self.assertEqual(result['top1'], 1)
-        self.assertEqual(result['per_class'][0]['id'], 151)
+        self.assertEqual(result['per_class'][0]['id'], CLASS_COUNT)
 
     def test_schema_rejects_bad_counts_nonfinite_and_mixed_orders(self):
         mutations = [lambda x: x.pop('target_id'), lambda x: x.update(target_id=True),
-                     lambda x: x.update(target_id=152), lambda x: x.update(group=''),
-                     lambda x: x.update(logits=[1.] * 150), lambda x: x['logits'].__setitem__(0, float('nan')),
+                     lambda x: x.update(target_id=CLASS_COUNT+1), lambda x: x.update(group=''),
+                     lambda x: x.update(logits=[1.] * (CLASS_COUNT-1)), lambda x: x['logits'].__setitem__(0, float('nan')),
                      lambda x: x['logits'].__setitem__(0, '1'), lambda x: x.update(sha256='abc'),
                      lambda x: x['label_ids'].reverse()]
         for mutate in mutations:
@@ -154,7 +157,7 @@ class MetricTests(unittest.TestCase):
     def test_separately_frozen_policies_have_paired_action_coverage_delta(self):
         # Identical predictions and class accuracy, but confidence ~.731. The
         # baseline accepts every image at .7; the candidate abstains at .8.
-        logits = [1., 0.] + [-100.] * 149
+        logits = [1., 0.] + [-100.] * (CLASS_COUNT-2)
         rows = [row('known', 1, logits=logits), row('unknown', None, logits=logits)]
         result = evaluation.compare_models(rows, rows[::-1], LABELS, confidence=.8, margin=.5,
                                             baseline_confidence=.7, baseline_margin=.5, replicates=40)
@@ -206,7 +209,7 @@ class MetricTests(unittest.TestCase):
                     self.assertEqual(report['top1'], 1)
                 else:
                     self.assertEqual(report['delta_candidate_minus_baseline']['top1']['estimate'], 0)
-            predictions.write_text(json.dumps(row('policy', 1, logits=[1., 0.] + [-100.] * 149)) + '\n', encoding='utf-8')
+            predictions.write_text(json.dumps(row('policy', 1, logits=[1., 0.] + [-100.] * (CLASS_COUNT-2))) + '\n', encoding='utf-8')
             output = io.StringIO()
             argv = ['metrics.py', 'compare', '--labels', str(labels), '--baseline', str(predictions),
                     '--candidate', str(predictions), '--replicates', '5', '--confidence', '.8',

@@ -11,6 +11,8 @@ import concurrent.futures
 import urllib.request
 from pathlib import Path
 from pathlib import PurePosixPath
+from labels import add_labels, read_labels
+from sources import JJMACK, JJMACK_REV, verify_jjmack, acquire_sprites, acquire_tcg
 
 DATASETS = ['sgtsaughter/pokemon-classification-images-151', 'JJMack/pokemon-classification-gen1-9', 'keremberke/pokemon-classification']
 BASELINE = 'BiernyVR/pokemon-classifier-mobilenetv3'
@@ -78,10 +80,17 @@ def ranged_fetch(url,target,total,expected=None):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('stage', choices=['metadata','baseline','data','pretrained','negatives'])
+    p.add_argument('stage', choices=['metadata','baseline','data','pretrained','negatives','sprites','tcg'])
     p.add_argument('--root', type=Path, default=Path('artifacts/replacement/sources'))
     p.add_argument('--dataset', choices=DATASETS, default=DATASETS[0])
+    add_labels(p)
+    p.add_argument('--delay',type=float,default=1.,help='minimum delay after each uncached new-source request')
+    p.add_argument('--attempts',type=int,default=6)
     a = p.parse_args(); a.root.mkdir(parents=True, exist_ok=True)
+    labels=read_labels(a.labels)
+    if a.stage in ('sprites','tcg'):
+        acquire_sprites(a.root,labels,fetch,a.delay,a.attempts) if a.stage=='sprites' else acquire_tcg(a.root,labels,fetch,a.delay,a.attempts)
+        return
     records = []
     if a.stage=='negatives':
         records.append(fetch('https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128.zip',a.root/'coco128/coco128.zip',20_000_000))
@@ -91,8 +100,11 @@ def main():
         for repo in DATASETS + [BASELINE]:
             kind = 'datasets/' if repo in DATASETS else 'models/'
             folder = a.root / repo.replace('/', '--')
-            records.append(fetch(f'https://huggingface.co/api/{kind}{repo}', folder/'metadata.json', 10_000_000))
+            endpoint=f'https://huggingface.co/api/{kind}{repo}'
+            if repo==JJMACK: endpoint+=f'/revision/{JJMACK_REV}'
+            records.append(fetch(endpoint, folder/'metadata.json', 10_000_000))
             meta = json.loads((folder/'metadata.json').read_text('utf-8'))
+            if repo==JJMACK: verify_jjmack(meta)
             revision = BASELINE_REV if repo == BASELINE else meta['sha']
             prefix = 'datasets/' if repo in DATASETS else ''
             records.append(fetch(f'https://huggingface.co/{prefix}{repo}/resolve/{revision}/README.md', folder/'README.md', 1_000_000))
@@ -111,6 +123,7 @@ def main():
                 for record in records: out.write(json.dumps(record)+'\n')
             return
         meta = json.loads((folder/'metadata.json').read_text('utf-8'))
+        if a.dataset==JJMACK: verify_jjmack(meta)
         files = [x['rfilename'] for x in meta['siblings'] if x['rfilename'].endswith(('.parquet', '.zip'))]
         if not files: raise ValueError('No parquet/zip; inspect metadata manually')
         if len(files) > 20: raise ValueError('Too many shards; inspect budget')

@@ -6,6 +6,138 @@ These first-party scripts retain the bounded data/training/export workflow. Raw 
 
 ## Data and training
 
+### National Dex (1025 classes)
+
+Every label-aware Python entry point accepts `--labels`; its default remains
+`iDex/Recognition/pokemon_labels.json` (151 classes). The file defines both count
+and logit order, including reversed ID order. Checkpoints embed the full list and
+loaders/continuation/resume/selection reject mismatches. `make_labels.py` uses the
+local PokéAPI CSV cache or downloads the same CSV used by the catalog builder;
+it refuses any difference in the shipped first 151 records. Do not replace the
+app's labels before the matching model is integrated.
+
+Run these commands from the repository root, in the existing isolated environment.
+They are the full acquisition/training sequence, **not commands run by the offline
+tests**. Use a fresh artifact root to preserve the original campaign. PowerShell:
+
+```powershell
+$trainPython = 'D:\project\.venvs\idex-train\Scripts\python.exe'
+$labels = 'scripts/replacement/labels-national.json'
+$runRoot = 'artifacts/replacement-national'
+$sources = "$runRoot/sources"
+$manifest = "$runRoot/data/manifest.jsonl"
+$checkpoint = "$runRoot/runs/efficientnet224/best.pt"
+
+& $trainPython scripts/replacement/make_labels.py
+& $trainPython scripts/replacement/acquire.py metadata --root $sources --labels $labels
+& $trainPython scripts/replacement/acquire.py pretrained --root $sources --labels $labels
+& $trainPython scripts/replacement/acquire.py data --dataset JJMack/pokemon-classification-gen1-9 --root $sources --labels $labels
+& $trainPython scripts/replacement/acquire.py data --dataset keremberke/pokemon-classification --root $sources --labels $labels
+& $trainPython scripts/replacement/acquire.py data --dataset sgtsaughter/pokemon-classification-images-151 --root $sources --labels $labels
+& $trainPython scripts/replacement/acquire.py sprites --root $sources --labels $labels --delay 1 --attempts 6
+& $trainPython scripts/replacement/acquire.py tcg --root $sources --labels $labels --delay 1 --attempts 6
+& $trainPython scripts/replacement/acquire.py negatives --root $sources --labels $labels
+& $trainPython scripts/replacement/data.py --root $runRoot --labels $labels --min-groups 5
+& $trainPython scripts/replacement/refine_groups.py --root $runRoot --labels $labels --min-groups 5
+& $trainPython scripts/replacement/audit.py --root $runRoot --labels $labels
+& $trainPython scripts/replacement/freeze_eval_scope.py --root $runRoot --labels $labels
+# Inspect the source receipts, conflicts, sheets and insufficient_groups.json first.
+& $trainPython scripts/replacement/train.py train --arch efficientnet_b0 --labels $labels --manifest $manifest --sources $sources --out "$runRoot/runs/efficientnet224" --epochs 20 --batch 128 --max-minutes 600 --balanced-sampling
+& $trainPython scripts/replacement/train.py predict --arch efficientnet_b0 --labels $labels --manifest $manifest --checkpoint $checkpoint --split val,ood_val --out "$runRoot/predictions/val.jsonl"
+& $trainPython scripts/replacement/choose_candidate.py --labels $labels --checkpoint $checkpoint --predictions "$runRoot/predictions/val.jsonl" --out "$runRoot/selection.json"
+# Selection is immutable. Only now open the reserved test.
+& $trainPython scripts/replacement/train.py predict --arch efficientnet_b0 --labels $labels --manifest $manifest --checkpoint $checkpoint --split test_public,ood_test_public --selection "$runRoot/selection.json" --final --out "$runRoot/predictions/test.jsonl"
+& $trainPython scripts/replacement/metrics.py summarize --labels $labels --predictions "$runRoot/predictions/test.jsonl" --output "$runRoot/reports/test.json" --replicates 1000
+& $trainPython scripts/replacement/analyze_predictions.py --labels $labels --candidate "$runRoot/predictions/test.jsonl" --manifest $manifest --selection "$runRoot/selection.json" --out "$runRoot/reports/analysis"
+```
+
+Stop on any nonzero exit; do not proceed with a failed acquisition. `sprites` and
+`tcg` cache complete API responses/pages and individual images. Rerunning the same
+command resumes from those files; an interrupted individual transfer is retried.
+Transient 408/429/500/502/503/504 and network failures use bounded exponential
+backoff. Receipts in each source's `downloads.jsonl` retain URL, bytes and SHA-256.
+`samples.jsonl` retains source identities and derivation flags. Sprites are default
+forms only: artwork/HOME normal and shiny, Showdown first frames, generation front
+sprites; decoded images smaller than 64 px on either axis are excluded. TCG walks
+all 250-card pages, filters single-national-number Pokémon cards, fetches
+`images.small`, and creates a marked `card_art_crop` at x8–92%, y11–47%. This crop
+is approximate for nonstandard/full-art layouts, not a verified object annotation.
+
+JJMack metadata is fetched at revision
+`959ff557b102fc3b4f912d0ca769273be5b9ca7f`; metadata/data ingestion reject another
+revision. A stale metadata cache must be replaced deliberately before acquisition.
+The `test`/`test2` ClassLabel entries are excluded; species outside the selected
+labels retain the original unknown-input handling. Families (`pokeapi:id:family`)
+and cards (`tcg:set-number`, full card + crop together) are merged with the existing
+exact-pixel, mirrored pHash and foreground duplicate groups before splitting.
+
+`insufficient_groups.json` records classes below `--min-groups` (default 5): three
+or more groups still receive at least one train/val/test group; fewer than three
+are train-only, including explicit zero-support records. Other classes continue.
+Training requires some validation data and every requested class in train. A
+train-only class has no held-out accuracy estimate. Test selection prioritizes
+groups containing non-synthetic, non-sprite examples. This grouping does not
+establish independent camera accuracy or eliminate all shared-artwork exposure.
+
+Synthetic augmentation runs online only on retained transparent foregrounds,
+with probability `.6` (`--synthetic-probability`, 0 disables it). It produces a
+fixed-size RGB composite with 35–90% foreground scale, random position, ±15°
+rotation, mild perspective, blur/brightness/contrast/color temperature, JPEG
+quality40–90 and occasional screen-like grid/moiré. Other samples use the original
+augmentation. A fixed Python RNG seed makes the synthetic module deterministic.
+Default backgrounds are solid colors/gradients. To use COCO backgrounds, acquire
+the **separate train-only** negatives with `acquire_oe.py --root $runRoot --labels
+$labels`, review the receipt/sheet, then add `--background-manifest
+"$runRoot/negative_train_manifest.jsonl"` to training. Frozen OOD validation/test
+images cannot be backgrounds. No review completion receipt is fabricated.
+
+Balanced sampling weights each image by its class frequency to the power `-.5`;
+enable with `--balanced-sampling`, disable with `--no-balanced-sampling` (default
+off for legacy compatibility). It does not silently change the batch size or
+epoch/time budget. Resume checks sampling and augmentation settings as well as
+the original model/manifest contract.
+
+Metric reports include top1/top3/top5, accepted coverage/accuracy and unknown FAR,
+plus source/generation slices. Generation comes from the committed
+`iDex/Resources/pokemon-national.json`; unknown targets get an `unknown` slice.
+An absent slice means no evaluated examples, not zero error. Online synthetic
+training samples are not independent test samples; a synthetic metric slice only
+exists when explicitly supplied predictions carry that source.
+
+For bounded multi-checkpoint selection and final reporting, `finish.py --root
+$runRoot --labels $labels --candidate $checkpoint --no-handoff` is an alternative
+to the individual prediction/selection/report steps. Repeat `--candidate` to
+compare validation candidates. The historical DenseNet baseline is optional:
+missing/incompatible labels produce `reports/baseline-comparison.json` with an
+explicit skip reason; same-label baselines still get paired diagnostics. The
+original `.95` accepted-known precision / `.05` per-source unknown FAR constraints
+remain; infeasible validation gives explicit unconditional abstention.
+
+On Mac, export and validate the same labels/checkpoint in a fresh output folder:
+
+```sh
+python scripts/replacement/export.py --checkpoint /path/to/best.pt \
+  --labels scripts/replacement/labels-national.json \
+  --out artifacts/replacement-national/export --deployment iOS18
+python scripts/replacement/fixtures.py --checkpoint /path/to/best.pt \
+  --labels scripts/replacement/labels-national.json \
+  --reference-checkpoint /path/to/best.pt \
+  --manifest artifacts/replacement-national/data/manifest.jsonl \
+  --out artifacts/replacement-national/fixtures
+```
+
+The Apple harness derives fixed output count from the supplied labels and rejects
+a shape/count mismatch; compare a national export against the same-label source
+references, not the historical Kanto model. New exports use `NationalCandidate-*`
+names; default-label exports retain `KantoCandidate-*`. No training, export,
+physical-camera accuracy or hinge behavior is established by offline tests.
+
+```powershell
+& $trainPython -m pytest scripts/replacement -q -p no:cacheprovider
+```
+
+### Original 151-class campaign
+
 Use a fresh artifact root. `acquire.py` fetches pinned data files/metadata without running dataset-provided code. Review [dataset provenance](references/dataset_research.md) and the source terms before use. The original campaign used TorchVision's ImageNet initialization, grouped the source images before splitting, quarantined conflicting labels, and mapped targets to the exact151 Kanto IDs. Public split scores do not certify independent camera performance.
 
 ```powershell

@@ -171,7 +171,7 @@ final class PhysicalDeviceValidationTests: XCTestCase {
         let labels = try AppleValidation.labels(at: AppleValidation.resolve(config.labels, relativeTo: root))
         let manifestURL = AppleValidation.resolve(config.manifest, relativeTo: root)
         let directory = manifestURL.deletingLastPathComponent()
-        let manifest = try AppleValidation.manifest(at: manifestURL)
+        let manifest = try AppleValidation.manifest(at: manifestURL, labels: labels)
         // Preload file bytes: the production import path receives in-memory photo data.
         let fixtureData = try manifest.fixtures.map {
             try Data(contentsOf: AppleValidation.resolve($0.image, relativeTo: directory))
@@ -192,13 +192,13 @@ final class PhysicalDeviceValidationTests: XCTestCase {
                     // each probe before loading the next. No prediction during probes.
                     for _ in 0..<(loadIterations - 1) {
                         let elapsed = try autoreleasepool { () throws -> Double in
-                            let probe = try ValidationModelSession(url: modelURL, computeUnits: units)
+                            let probe = try ValidationModelSession(url: modelURL, computeUnits: units, classCount: labels.count)
                             return probe.loadMS
                         }
                         loadSamplesMS.append(elapsed)
                     }
                     let session = try ValidationModelSession(
-                        url: modelURL, computeUnits: units)
+                        url: modelURL, computeUnits: units, classCount: labels.count)
                     loadSamplesMS.append(session.loadMS)
                     let memoryAfter = DeviceObservation.residentBytes()
                     var predictions: [ValidationPrediction] = []

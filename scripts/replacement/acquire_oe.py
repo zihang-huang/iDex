@@ -6,12 +6,16 @@ import random
 import threading
 import urllib.request
 import zipfile
+import argparse
 from pathlib import Path
 from PIL import ImageDraw,Image
 from data import rgb_image,phash
 from acquire import fetch
+from labels import add_labels,read_labels
 
-root=Path('artifacts/replacement');folder=root/'sources/coco-oe';folder.mkdir(exist_ok=True)
+p=argparse.ArgumentParser();add_labels(p);p.add_argument('--root',type=Path,default=Path('artifacts/replacement'));a=p.parse_args()
+read_labels(a.labels)
+root=a.root;folder=root/'sources/coco-oe';folder.mkdir(parents=True,exist_ok=True)
 metadata=folder/'image_info_test2017.zip'
 fetch('http://images.cocodataset.org/annotations/image_info_test2017.zip',metadata,5_000_000,'e52f412dd7195ac8f98d782b44c6dd30ea10241e9f42521f67610fbe055a74f8')
 with zipfile.ZipFile(metadata) as archive:

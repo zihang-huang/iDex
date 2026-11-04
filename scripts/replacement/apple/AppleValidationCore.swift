@@ -150,12 +150,15 @@ enum ValidationImagePreparer {
 
 final class ValidationModelSession {
     let model: MLModel
+    let classCount: Int
     let contract: ValidationContract
     let compileMS: Double?
     let loadMS: Double
     private let ownedCompiledURL: URL?
 
-    init(url: URL, computeUnits: MLComputeUnits) throws {
+    init(url: URL, computeUnits: MLComputeUnits, classCount: Int) throws {
+        guard classCount >= 2 else { throw AppleValidationError.invalid("Need at least two labels") }
+        self.classCount = classCount
         let ext = url.pathExtension.lowercased()
         guard ext == "mlpackage" || ext == "mlmodelc" else {
             throw AppleValidationError.invalid("Expected .mlpackage or .mlmodelc: \(url.path)")
@@ -182,7 +185,7 @@ final class ValidationModelSession {
             let (loadedModel, elapsed) = try ValidationClock.measure("ModelLoad") {
                 try MLModel(contentsOf: compiledURL, configuration: configuration)
             }
-            let inspectedContract = try Self.inspect(loadedModel)
+            let inspectedContract = try Self.inspect(loadedModel, classCount: classCount)
             model = loadedModel
             loadMS = elapsed
             contract = inspectedContract
@@ -197,7 +200,7 @@ final class ValidationModelSession {
         if let ownedCompiledURL { try? FileManager.default.removeItem(at: ownedCompiledURL) }
     }
 
-    private static func inspect(_ model: MLModel) throws -> ValidationContract {
+    private static func inspect(_ model: MLModel, classCount: Int) throws -> ValidationContract {
         let description = model.modelDescription
         guard Set(description.inputDescriptionsByName.keys) == Set(["image"]),
               let input = description.inputDescriptionsByName["image"], input.type == .image,
@@ -212,10 +215,10 @@ final class ValidationModelSession {
             throw AppleValidationError.invalid("Output logits must be an MLMultiArray")
         }
         let shape = constraint.shape.map(\.intValue)
-        // Fixed 151-class output is deliberate: do not accept ambiguous flexible shapes.
-        guard !shape.isEmpty, shape.allSatisfy({ $0 > 0 && $0 <= 151 }),
-              shape.filter({ $0 != 1 }) == [151] else {
-            throw AppleValidationError.invalid("Output shape must contain exactly 151 elements: \(shape)")
+        // Labels define the fixed output shape; reject flexible/ambiguous shapes.
+        guard !shape.isEmpty, shape.allSatisfy({ $0 > 0 && $0 <= classCount }),
+              shape.filter({ $0 != 1 }) == [classCount] else {
+            throw AppleValidationError.invalid("Output shape must contain exactly \(classCount) elements: \(shape)")
         }
         let metadata = Dictionary(uniqueKeysWithValues: description.metadata.map {
             (String(describing: $0.key), String(describing: $0.value))
@@ -238,10 +241,10 @@ final class ValidationModelSession {
     func predict(input: MLFeatureProvider) throws -> [Double] {
         let output = try model.prediction(from: input)
         guard let values = output.featureValue(for: "logits")?.multiArrayValue,
-              values.count == 151 else {
-            throw AppleValidationError.invalid("Prediction must return exactly 151 logits")
+              values.count == classCount else {
+            throw AppleValidationError.invalid("Prediction must return exactly \(classCount) logits")
         }
-        let logits = (0..<151).map { values[$0].doubleValue }
+        let logits = (0..<classCount).map { values[$0].doubleValue }
         guard logits.allSatisfy(\.isFinite) else {
             throw AppleValidationError.invalid("Prediction contains non-finite logits")
         }
@@ -252,19 +255,19 @@ final class ValidationModelSession {
 enum AppleValidation {
     static func labels(at url: URL) throws -> [ValidationLabel] {
         let labels = try JSONDecoder().decode([ValidationLabel].self, from: Data(contentsOf: url))
-        guard labels.count == 151, Set(labels.map(\.id)) == Set(1...151),
+        guard labels.count >= 2, Set(labels.map(\.id)) == Set(1...labels.count),
               labels.allSatisfy({ !$0.name.isEmpty }) else {
-            throw AppleValidationError.invalid("Labels must contain exactly IDs 1...151, once each, in model order")
+            throw AppleValidationError.invalid("Labels must contain exactly IDs 1...class_count, once each, in model order")
         }
         return labels // Preserve file order. Never sort labels by ID or name.
     }
 
-    static func manifest(at url: URL) throws -> ValidationManifest {
+    static func manifest(at url: URL, labels: [ValidationLabel]) throws -> ValidationManifest {
         let manifest = try JSONDecoder().decode(ValidationManifest.self, from: Data(contentsOf: url))
         guard !manifest.fixtures.isEmpty,
               Set(manifest.fixtures.map(\.id)).count == manifest.fixtures.count,
               manifest.fixtures.allSatisfy({ !$0.id.isEmpty && !$0.image.isEmpty &&
-                ($0.targetID == nil || (1...151).contains($0.targetID!)) }) else {
+                ($0.targetID == nil || Set(labels.map(\.id)).contains($0.targetID!)) }) else {
             throw AppleValidationError.invalid("Manifest needs nonempty unique fixture IDs and valid optional target_id")
         }
         return manifest
@@ -323,7 +326,7 @@ enum AppleValidation {
     static func prediction(role: String, fixture: ValidationFixture, logits: [Double],
                            labels: [ValidationLabel], directory: URL,
                            atol: Double, rtol: Double, requireReference: Bool) throws -> ValidationPrediction {
-        guard labels.count == 151, logits.count == 151, logits.allSatisfy(\.isFinite),
+        guard labels.count >= 2, logits.count == labels.count, logits.allSatisfy(\.isFinite),
               atol.isFinite, rtol.isFinite, atol >= 0, rtol >= 0 else {
             throw AppleValidationError.invalid("Invalid logits, labels, or parity tolerances")
         }
@@ -340,8 +343,8 @@ enum AppleValidation {
         if let path = fixture.referencePath(for: role) {
             let reference = try JSONDecoder().decode([Double].self,
                 from: Data(contentsOf: resolve(path, relativeTo: directory)))
-            guard reference.count == 151, reference.allSatisfy(\.isFinite) else {
-                throw AppleValidationError.invalid("Reference \(path) needs 151 finite logits in label order")
+            guard reference.count == labels.count, reference.allSatisfy(\.isFinite) else {
+                throw AppleValidationError.invalid("Reference \(path) needs \(labels.count) finite logits in label order")
             }
             let errors = zip(logits, reference).map { abs($0.0 - $0.1) }
             guard errors.allSatisfy(\.isFinite), errors.reduce(0, +).isFinite,
@@ -351,8 +354,8 @@ enum AppleValidation {
             let failures = zip(errors, reference).filter { $0.0 > atol + rtol * abs($0.1) }.count
             let referenceTop = reference.indices.max { reference[$0] == reference[$1] ? $0 > $1 : reference[$0] < reference[$1] }!
             parity = ValidationParity(reference: path, absoluteTolerance: atol, relativeTolerance: rtol,
-                maxAbsoluteError: errors.max()!, meanAbsoluteError: errors.reduce(0, +) / 151,
-                rootMeanSquareError: sqrt(errors.map { $0 * $0 }.reduce(0, +) / 151),
+                maxAbsoluteError: errors.max()!, meanAbsoluteError: errors.reduce(0, +) / Double(labels.count),
+                rootMeanSquareError: sqrt(errors.map { $0 * $0 }.reduce(0, +) / Double(labels.count)),
                 failingElements: failures, top1Matches: first == referenceTop,
                 passed: failures == 0 && first == referenceTop)
         } else if requireReference {

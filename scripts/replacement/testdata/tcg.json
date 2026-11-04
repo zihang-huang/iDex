@@ -1,0 +1,10 @@
+{
+  "page": 1, "pageSize": 250, "count": 5, "totalCount": 5,
+  "data": [
+    {"id": "test-1", "set": {"id": "test"}, "number": "1", "supertype": "Pokémon", "nationalPokedexNumbers": [1025], "images": {"small": "https://images.pokemontcg.io/test/1.png"}},
+    {"id": "test-2", "set": {"id": "test"}, "number": "2", "supertype": "Pokémon", "nationalPokedexNumbers": [1], "images": {"small": "https://images.pokemontcg.io/test/2.png"}},
+    {"id": "test-3", "supertype": "Pokémon", "nationalPokedexNumbers": [1, 2]},
+    {"id": "test-4", "supertype": "Trainer", "nationalPokedexNumbers": [1]},
+    {"id": "test-5", "supertype": "Pokémon", "nationalPokedexNumbers": []}
+  ]
+}

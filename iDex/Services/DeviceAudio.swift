@@ -145,6 +145,23 @@ final class DeviceAudio {
         }
     }
 
+    /// Play only the species' cry, for the record's cry button; no reading follows.
+    func playCry(_ pokemon: Pokemon) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6)
+        stopSound()
+        stopSpeaking()
+        guard isActive, isSoundEnabled else { return }
+        let generation = soundGeneration
+        let request = AudioPlaybackRequest()
+        soundRequest = request
+        soundTask = Task { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            guard await self.ensureSession(), !Task.isCancelled,
+                  generation == self.soundGeneration, self.isActive, self.isSoundEnabled else { return }
+            self.worker.playCry(dexID: pokemon.id, request: request) {}
+        }
+    }
+
     func stopSpeaking() {
         speechGeneration += 1
         isSpeaking = false

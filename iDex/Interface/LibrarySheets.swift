@@ -1,39 +1,59 @@
 import SwiftUI
 
+/// Grid cards or compact rows in the archive; remembered between launches.
+enum CatalogLayout: String {
+    case grid, list
+}
+
 struct CatalogSheet: View {
     @Bindable var store: DexStore
     @State private var query = ""
     @State private var seenOnly = false
+    /// Resets to all generations on every open, so a stale filter never hides a search result.
+    @State private var generation: Int? = nil
+    @AppStorage("idex.catalogLayout") private var layout = CatalogLayout.grid
 
     var body: some View {
         NavigationStack {
-            let matches = results
+            let sections = results
             VStack(spacing: 0) {
-                Toggle(store.text("Discovered only", "仅显示已发现", "発見済みのみ"), isOn: $seenOnly)
-                    .font(.system(size: 13, design: .monospaced)).padding(.horizontal, 20).padding(.vertical, 10)
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 125), spacing: 12)], spacing: 12) {
-                        ForEach(matches) { pokemon in
-                            Button {
-                                store.browse(pokemon)
-                            } label: {
-                                VStack(spacing: 8) {
-                                    HStack {
-                                        Text("#\(pokemon.number)").font(DexTheme.pixel(7))
-                                        Spacer()
-                                        if store.seenIDs.contains(pokemon.id) { Image(systemName: "checkmark.seal.fill").font(.system(size: 11)) }
+                generationFilter
+                HStack(spacing: 12) {
+                    Toggle(store.text("Discovered only", "仅显示已发现", "発見済みのみ"), isOn: $seenOnly)
+                        .font(.system(size: 13, design: .monospaced))
+                    layoutButton(.grid, systemImage: "square.grid.2x2.fill", label: store.text("Grid", "网格", "グリッド"))
+                    layoutButton(.list, systemImage: "list.bullet", label: store.text("List", "列表", "リスト"))
+                }.padding(.horizontal, 20).padding(.vertical, 10)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
+                            Color.clear.frame(height: 0).id(Self.topID)
+                            ForEach(sections) { section in
+                                Section {
+                                    LazyVGrid(columns: columns, spacing: layout == .grid ? 12 : 8) {
+                                        ForEach(section.entries) { pokemon in
+                                            entryButton(pokemon).id(pokemon.id)
+                                        }
                                     }
-                                    Image(pokemon.spriteName).resizable().interpolation(.none).scaledToFit().frame(height: 80).accessibilityHidden(true)
-                                    Text(pokemon.name(in: store.language))
-                                        .font(PixelFont.font(size: store.language == .en ? 8 : 16, language: store.language))
-                                        .lineLimit(1).minimumScaleFactor(0.5)
-                                }.padding(12).foregroundStyle(DexTheme.ink)
-                                    .background(DexTheme.lcd, in: RoundedRectangle(cornerRadius: 5))
-                            }.buttonStyle(.plain).accessibilityIdentifier("pokemon-\(pokemon.id)")
+                                } header: {
+                                    sectionHeader(section)
+                                }
+                            }
+                        }.padding(.horizontal, 20).padding(.bottom, 20)
+                        if sections.isEmpty {
+                            ContentUnavailableView.search(text: query)
                         }
-                    }.padding(20)
-                    if matches.isEmpty {
-                        ContentUnavailableView.search(text: query)
+                    }
+                    .task {
+                        // Reopen at the record being viewed; wait a frame for the lazy content.
+                        try? await Task.sleep(for: .milliseconds(50))
+                        if let id = store.selected?.id { proxy.scrollTo(id, anchor: .center) }
+                    }
+                    .onChange(of: generation) { proxy.scrollTo(Self.topID, anchor: .top) }
+                    .onChange(of: layout) {
+                        if let id = store.selected?.id, results.contains(where: { section in section.entries.contains { $0.id == id } }) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
                     }
                 }
             }
@@ -48,8 +68,99 @@ struct CatalogSheet: View {
             .persistentSystemOverlays(.hidden)
     }
 
-    private var results: [Pokemon] {
-        PokemonCatalog.shared.search(query, language: store.language).filter { !seenOnly || store.seenIDs.contains($0.id) }
+    private static let topID = "catalog-top"
+
+    private var results: [CatalogSection] {
+        PokemonCatalog.shared.sections(matching: query, language: store.language, generation: generation,
+                                       onlyIDs: seenOnly ? store.seenIDs : nil)
+    }
+
+    /// Cards fill the width as before; rows split into two columns on the unfolded display.
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: layout == .grid ? 125 : 380), spacing: 12)]
+    }
+
+    private var generationFilter: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                filterButton(store.text("ALL", "全部", "すべて"), font: PixelFont.font(size: store.language == .en ? 8 : 13, language: store.language),
+                             value: nil, identifier: "generation-all")
+                ForEach(PokemonCatalog.shared.generations, id: \.self) { value in
+                    filterButton(Pokemon.romanNumeral(value), font: DexTheme.pixel(8), value: value, identifier: "generation-\(value)")
+                        .accessibilityLabel(Pokemon.generationTitle(value, in: store.language))
+                }
+            }.padding(.horizontal, 20).padding(.vertical, 8)
+        }.padding(.top, 4)
+    }
+
+    private func filterButton(_ title: String, font: Font, value: Int?, identifier: String) -> some View {
+        let selected = generation == value
+        return Button { generation = value; store.audio.play(.button) } label: { Text(title).font(font) }
+            .buttonStyle(HardwareButtonStyle(color: selected ? DexTheme.lcd : DexTheme.graphite, foreground: selected ? DexTheme.ink : DexTheme.cream))
+            .accessibilityIdentifier(identifier)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func layoutButton(_ value: CatalogLayout, systemImage: String, label: String) -> some View {
+        let selected = layout == value
+        return Button { layout = value; store.audio.play(.button) } label: { Image(systemName: systemImage).frame(width: 17) }
+            .buttonStyle(HardwareButtonStyle(color: selected ? DexTheme.lcd : DexTheme.graphite, foreground: selected ? DexTheme.ink : DexTheme.cream))
+            .accessibilityLabel(label)
+            .accessibilityIdentifier("catalog-layout-\(value.rawValue)")
+            .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func sectionHeader(_ section: CatalogSection) -> some View {
+        Text("\(Pokemon.generationTitle(section.generation, in: store.language)) · \(section.entries.count)")
+            .font(PixelFont.font(size: store.language == .en ? 8 : 14, language: store.language))
+            .foregroundStyle(DexTheme.lcd)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+            .background(DexTheme.charcoal)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func entryButton(_ pokemon: Pokemon) -> some View {
+        Button { store.browse(pokemon) } label: {
+            if layout == .grid { gridCard(pokemon) } else { listRow(pokemon) }
+        }.buttonStyle(.plain).accessibilityIdentifier("pokemon-\(pokemon.id)")
+    }
+
+    private func gridCard(_ pokemon: Pokemon) -> some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("#\(pokemon.number)").font(DexTheme.pixel(7))
+                Spacer()
+                if store.seenIDs.contains(pokemon.id) { Image(systemName: "checkmark.seal.fill").font(.system(size: 11)) }
+            }
+            Image(pokemon.spriteName).resizable().interpolation(.none).scaledToFit().frame(height: 80).accessibilityHidden(true)
+            Text(pokemon.name(in: store.language))
+                .font(PixelFont.font(size: store.language == .en ? 8 : 16, language: store.language))
+                .lineLimit(1).minimumScaleFactor(0.5)
+        }.padding(12).foregroundStyle(DexTheme.ink)
+            .background(DexTheme.lcd, in: RoundedRectangle(cornerRadius: 5))
+    }
+
+    /// One line per species; the trailing ●/— matches the record panel's SEEN field.
+    private func listRow(_ pokemon: Pokemon) -> some View {
+        HStack(spacing: 10) {
+            Text("#\(pokemon.number)").font(DexTheme.pixel(7)).frame(width: 46, alignment: .leading)
+            Image(pokemon.spriteName).resizable().interpolation(.none).scaledToFit().frame(width: 40, height: 40).accessibilityHidden(true)
+            // A capped name column keeps the type tags aligned from row to row.
+            Text(pokemon.name(in: store.language))
+                .font(PixelFont.font(size: store.language == .en ? 8 : 16, language: store.language))
+                .lineLimit(1).minimumScaleFactor(0.5)
+                .frame(maxWidth: 130, alignment: .leading)
+            HStack(spacing: 4) {
+                ForEach(pokemon.typeNames(in: store.language), id: \.self) { type in
+                    TypeTag(name: type, language: store.language)
+                }
+            }
+            Spacer(minLength: 4)
+            Text(store.seenIDs.contains(pokemon.id) ? "●" : "—").font(DexTheme.pixel(8)).frame(width: 16)
+                .accessibilityLabel(store.seenIDs.contains(pokemon.id) ? store.text("Discovered", "已发现", "発見済み") : "")
+        }.padding(.horizontal, 12).padding(.vertical, 6).foregroundStyle(DexTheme.ink)
+            .background(DexTheme.lcd, in: RoundedRectangle(cornerRadius: 5))
     }
 }
 

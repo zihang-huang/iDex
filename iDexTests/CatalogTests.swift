@@ -128,6 +128,25 @@ struct CatalogTests {
         #expect(sprigatito.generationTitle(in: .ja) == "第9世代")
     }
 
+    @Test func archiveSectionsGroupByGenerationAndCombineFilters() {
+        let catalog = PokemonCatalog.shared
+        #expect(catalog.generations == Array(1...9))
+        let all = catalog.sections(matching: "", language: .en)
+        #expect(all.map(\.generation) == Array(1...9))
+        #expect(all.map(\.entries.count) == [151, 100, 135, 107, 156, 72, 88, 96, 120])
+        #expect(all.flatMap(\.entries).map(\.id) == Array(1...1025))
+        let ninth = catalog.sections(matching: "", language: .en, generation: 9)
+        #expect(ninth.map(\.generation) == [9])
+        #expect(ninth.first?.entries.first?.id == 906)
+        #expect(catalog.sections(matching: "pikachu", language: .en, generation: 9).isEmpty)
+        #expect(catalog.sections(matching: "25", language: .en, generation: 1).flatMap(\.entries).map(\.id) == [25, 125])
+        let seen = catalog.sections(matching: "", language: .en, onlyIDs: [25, 906])
+        #expect(seen.map(\.generation) == [1, 9])
+        #expect(seen.flatMap(\.entries).map(\.id) == [25, 906])
+        #expect(Pokemon.generationTitle(9, in: .zhHans) == "第九世代")
+        #expect(Pokemon.romanNumeral(4) == "IV")
+    }
+
     @Test func officialSiteTextFillsUpstreamGaps() throws {
         // PokéAPI has no Japanese genus for Sprigatito; it comes from zukan.pokemon.co.jp.
         let sprigatito = try #require(PokemonCatalog.shared.pokemon(id: 906))

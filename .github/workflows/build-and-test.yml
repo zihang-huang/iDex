@@ -110,6 +110,31 @@ jobs:
           PY
           done
 
+      # "Application does not have a process ID" usually means the app crashed; surface the
+      # simulator's crash reports (exception and top frames) as public annotations too.
+      - name: Report app crashes
+        if: ${{ !cancelled() }}
+        run: |
+          python3 - <<'PY'
+          import glob, json, os
+          reports = sorted(glob.glob(os.path.expanduser('~/Library/Logs/DiagnosticReports/iDex*.ips')), key=os.path.getmtime)
+          print(f'{len(reports)} iDex crash report(s)')
+          def message(value):
+              return value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          for path in reports[-5:]:
+              try:
+                  report = json.loads(open(path, encoding='utf-8').read().split('\n', 1)[1])
+                  exception = report.get('exception', {})
+                  thread = report.get('threads', [])[report.get('faultingThread', 0)]
+                  images = report.get('usedImages', [])
+                  frames = [f"{images[f.get('imageIndex', 0)].get('name', '?') if images else '?'} {f.get('symbol', '?')}"
+                            for f in thread.get('frames', [])[:14]]
+                  text = f"{exception.get('type')} {exception.get('signal')} {report.get('termination', {}).get('indicator', '')}\n" + '\n'.join(frames)
+              except Exception as error:
+                  text = f'unreadable crash report: {error}'
+              print(f'::error title=App crash {os.path.basename(path)}::{message(text[:2000])}')
+          PY
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7

@@ -96,6 +96,34 @@ struct DeviceAudioTests {
         audio.suspend()
     }
 
+    @Test(arguments: [25, 906, 1025])
+    func cryButtonPlaysOnlyTheSelectedCry(dexID: Int) async throws {
+        let savedViewed = UserDefaults.standard.object(forKey: "idex.lastViewed")
+        defer { UserDefaults.standard.set(savedViewed, forKey: "idex.lastViewed") }
+        let backend = AudioPlaybackSpy()
+        let audio = DeviceAudio(worker: backend, defaults: isolatedDefaults())
+        let store = DexStore(audio: audio)
+        audio.resume()
+        store.browse(try #require(PokemonCatalog.shared.pokemon(id: dexID)))
+        store.playCry()
+        #expect(await waitUntil { backend.cries == [dexID] })
+        backend.finishCry()
+        for _ in 0..<10 { await Task.yield() }
+        #expect(backend.spokenCount == 0)
+        store.suspend()
+    }
+
+    @Test func mutedCryButtonStaysSilent() async throws {
+        let backend = AudioPlaybackSpy()
+        let audio = DeviceAudio(worker: backend, defaults: isolatedDefaults())
+        audio.resume()
+        audio.isSoundEnabled = false
+        audio.playCry(try #require(PokemonCatalog.shared.pokemon(id: 906)))
+        for _ in 0..<10 { await Task.yield() }
+        #expect(backend.cries.isEmpty)
+        audio.suspend()
+    }
+
     @Test func mutingDuringStartupPreventsAPendingCry() async throws {
         let backend = AudioPlaybackSpy(deferredActivation: true)
         let audio = DeviceAudio(worker: backend, defaults: isolatedDefaults())

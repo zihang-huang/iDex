@@ -184,6 +184,24 @@ final class iDexUITests: XCTestCase {
         attachScreenshot("charizard-archive", app: app)
     }
 
+    func testGenerationFilterAndListLayout() throws {
+        let app = launchInEnglish()
+        openCatalog(in: app)
+        // Generation II's button is visible without scrolling the filter row on the cover display.
+        let second = app.buttons["generation-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        second.tap()
+        XCTAssertTrue(app.buttons["pokemon-152"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["pokemon-1"].exists)
+        attachScreenshot("catalog-generation-ii-grid", app: app)
+        app.buttons["catalog-layout-list"].tap()
+        XCTAssertTrue(app.buttons["pokemon-152"].waitForExistence(timeout: 5))
+        attachScreenshot("catalog-generation-ii-list", app: app)
+        app.buttons["catalog-layout-grid"].tap()
+        app.buttons["generation-all"].tap()
+        XCTAssertTrue(app.buttons["pokemon-1"].waitForExistence(timeout: 5))
+    }
+
     func testTurningPhoneDoesNotRotateScannerOrPresentations() throws {
         XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }

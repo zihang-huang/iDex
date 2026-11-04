@@ -41,9 +41,7 @@ struct EntryPanel: View {
                                 Text(pokemon.genus(in: store.language)).font(.system(size: 12, design: .monospaced))
                                 HStack(spacing: 4) {
                                     ForEach(pokemon.typeNames(in: store.language), id: \.self) { type in
-                                        Text(type).font(PixelFont.font(size: store.language == .en ? 6 : 12, language: store.language))
-                                            .padding(.horizontal, 7).padding(.vertical, 5)
-                                            .overlay { RoundedRectangle(cornerRadius: 2).stroke(DexTheme.ink.opacity(0.6), lineWidth: 1) }
+                                        TypeTag(name: type, language: store.language)
                                     }
                                 }
                             }
@@ -95,6 +93,9 @@ struct EntryPanel: View {
                     Button { store.step(1) } label: { Image(systemName: "arrowtriangle.right.fill").frame(width: 17) }
                         .accessibilityLabel(store.text("Next Pokémon", "下一个宝可梦", "次のポケモン"))
                     Spacer(minLength: 0)
+                    Button { store.playCry() } label: { Image(systemName: "waveform").frame(width: 17) }
+                        .accessibilityLabel(store.text("Play cry", "播放叫声", "なきごえを再生"))
+                        .accessibilityIdentifier("cry-button")
                     Button { store.speak() } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "speaker.wave.2.fill")

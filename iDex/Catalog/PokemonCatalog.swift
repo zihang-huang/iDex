@@ -98,12 +98,18 @@ struct Pokemon: Identifiable, Codable, Hashable {
     }
 
     func generationTitle(in language: AppLanguage) -> String {
-        let roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"]
+        Self.generationTitle(generation, in: language)
+    }
+
+    static func generationTitle(_ generation: Int, in language: AppLanguage) -> String {
         let chinese = ["一", "二", "三", "四", "五", "六", "七", "八", "九"]
-        guard roman.indices.contains(generation - 1) else {
-            return language.text("GEN. \(generation)", "第\(generation)世代", "第\(generation)世代")
-        }
-        return language.text("GEN. \(roman[generation - 1])", "第\(chinese[generation - 1])世代", "第\(generation)世代")
+        let han = chinese.indices.contains(generation - 1) ? chinese[generation - 1] : "\(generation)"
+        return language.text("GEN. \(romanNumeral(generation))", "第\(han)世代", "第\(generation)世代")
+    }
+
+    static func romanNumeral(_ generation: Int) -> String {
+        let roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"]
+        return roman.indices.contains(generation - 1) ? roman[generation - 1] : "\(generation)"
     }
 
     static func typeName(_ type: String, in language: AppLanguage) -> String {
@@ -141,9 +147,18 @@ struct Pokemon: Identifiable, Codable, Hashable {
     }
 }
 
+/// One generation's slice of the archive browser.
+struct CatalogSection: Identifiable, Equatable {
+    let generation: Int
+    let entries: [Pokemon]
+    var id: Int { generation }
+}
+
 struct PokemonCatalog {
     static let shared = PokemonCatalog()
     let entries: [Pokemon]
+    /// Generations present in the catalog, in order.
+    let generations: [Int]
     private let entriesByID: [Int: Pokemon]
     private let searchIndex: [SearchEntry]
 
@@ -169,11 +184,13 @@ struct PokemonCatalog {
               let decoded = try? JSONDecoder().decode([Pokemon].self, from: data) else {
             assertionFailure("The bundled National Pokédex catalog is missing or invalid.")
             entries = []
+            generations = []
             entriesByID = [:]
             searchIndex = []
             return
         }
         entries = decoded.sorted { $0.id < $1.id }
+        generations = Array(Set(entries.map(\.generation))).sorted()
         entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         searchIndex = entries.map {
             SearchEntry(pokemon: $0, number: $0.number,
@@ -198,6 +215,16 @@ struct PokemonCatalog {
                 || entry.types(in: language).contains { $0.localizedCaseInsensitiveContains(value) }
             return matches ? entry.pokemon : nil
         }
+    }
+
+    /// Search results narrowed to one generation and/or a set of IDs, grouped by generation in dex order.
+    func sections(matching query: String, language: AppLanguage, generation: Int? = nil, onlyIDs: Set<Int>? = nil) -> [CatalogSection] {
+        let matches = search(query, language: language).filter {
+            (generation == nil || $0.generation == generation) && (onlyIDs?.contains($0.id) ?? true)
+        }
+        return Dictionary(grouping: matches, by: \.generation)
+            .sorted { $0.key < $1.key }
+            .map { CatalogSection(generation: $0.key, entries: $0.value) }
     }
 }
 

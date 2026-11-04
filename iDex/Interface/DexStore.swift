@@ -243,6 +243,11 @@ final class DexStore {
         audio.speak(selected.spokenEntry(in: language), languageCode: language.speechLocale)
     }
 
+    func playCry() {
+        guard isActive, let selected else { return }
+        audio.playCry(selected)
+    }
+
     private static func opaqueImage(_ image: CGImage) -> CGImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1

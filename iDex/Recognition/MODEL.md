@@ -29,10 +29,10 @@ Photo import corrects orientation, composites alpha onto white, bounds thumbnail
 
 | Threshold | Softmax temperature | Minimum score | Minimum raw margin | Origin |
 | --- | --- | --- | --- | --- |
-| Strict (default) | 0.75 | .95 | 3 | Chosen on the national model's validation split |
-| Relaxed | 1 | .25 | .5 | The original iDex heuristic |
+| Strict mode (default, `strict`) | 0.75 | .95 | 3 | Chosen on the national model's validation split |
+| Fun mode (`relaxed`) | 1 | .25 | .5 | The original iDex heuristic |
 
-The displayed score uses the same temperature as the chosen threshold; the margin always uses raw logits. A new threshold applies from the next scan. Other results remain best guesses. Neither tier is a trained unknown detector or calibrated probability. There is no background class; unrelated objects can still be accepted, far more often under Relaxed.
+The displayed score uses the same temperature as the chosen threshold; the margin always uses raw logits. A new threshold applies from the next scan. Other results remain best guesses. Neither tier is a trained unknown detector or calibrated probability. There is no background class; unrelated objects can still be accepted, far more often in Fun mode.
 
 ## Validation and limits
 
@@ -44,8 +44,8 @@ Frozen public test split (12,449 known images, 64 COCO unknowns), evaluated once
 | --- | --- |
 | Top-1 / top-3 / top-5 | 93.8% (95% CI 93.3–94.3%) / 97.1% / 97.9% |
 | Macro F1 | 0.917 |
-| Strict: coverage / accepted accuracy / unknown false acceptance | 75.8% / 99.7% / 3.1% |
-| Relaxed: coverage / accepted accuracy / unknown false acceptance | 93.4% / 97.4% / 40.6% |
+| Strict mode: coverage / accepted accuracy / unknown false acceptance | 75.8% / 99.7% / 3.1% |
+| Fun mode: coverage / accepted accuracy / unknown false acceptance | 93.4% / 97.4% / 40.6% |
 | Top-1 by source | game sprites 98.3%, community image datasets 95.3–96.3%, trading cards 89.6% |
 | Top-1 by generation | I 96.0%, II 91.9%, III 93.3%, IV 93.9%, V 94.1%, VI 89.7%, VII 89.6%, VIII 91.2%, IX 89.5% |
 

@@ -211,9 +211,9 @@ struct SettingsSheet: View {
                             .accessibilityAddTraits(store.recognitionThreshold == threshold ? .isSelected : [])
                     }
                 } header: {
-                    Text(store.text("Recognition threshold", "识别门槛", "識別のしきい値"))
+                    Text(store.text("Recognition mode", "识别模式", "識別モード"))
                 } footer: {
-                    Text(store.text("Below the threshold, iDex still shows its best match but does not mark it discovered or read it aloud. Applies to the next scan.", "未达门槛时仍会显示最可能的结果，但不会自动收录或朗读。从下一次扫描起生效。", "しきい値に満たない場合も最有力候補は表示されますが、発見済みへの登録と読み上げは行いません。次のスキャンから適用されます。"))
+                    Text(store.text("Both modes use the same model; they differ in how sure it must be. Below that bar, iDex still shows its best match but does not mark it discovered or read it aloud. Applies to the next scan.", "两种模式用的是同一个识别模型，区别在于要多有把握才算识别成功。没达到时仍会显示最可能的结果，但不会自动收录或朗读。从下一次扫描起生效。", "どちらのモードも同じ識別モデルを使い、どこまで確信できれば識別完了とするかが異なります。基準に満たない場合も最有力候補は表示されますが、発見済みへの登録と読み上げは行いません。次のスキャンから適用されます。"))
                 }
                 Section(store.text("Field guide", "使用指南", "使い方")) {
                     Label(store.text("Point at a Pokémon, then identify.", "将取景器对准宝可梦，轻点识别。", "ポケモンにカメラを向けて、スキャンします。"), systemImage: "viewfinder")
@@ -248,8 +248,8 @@ struct SettingsSheet: View {
 
     private func thresholdTitle(_ threshold: RecognitionThreshold) -> String {
         switch threshold {
-        case .strict: store.text("Strict", "严格", "厳しめ")
-        case .relaxed: store.text("Relaxed (original iDex)", "宽松（原版设置）", "ゆるめ（オリジナル設定）")
+        case .strict: store.text("Strict mode", "严格模式", "厳格モード")
+        case .relaxed: store.text("Fun mode (original iDex)", "娱乐模式（原版设置）", "エンジョイモード（オリジナル設定）")
         }
     }
 

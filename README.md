@@ -8,6 +8,18 @@ A pocket Pokédex for iPhone Duo. Point, scan, and pretend Professor Oak gave yo
 
 Native SwiftUI · English / 简体中文 / 日本語 · On-device Core ML
 
+## About this edition
+
+This is rom0718's upgraded edition of [iDex by Zihang Huang](https://github.com/zihang-huang/iDex). The original app, its design and its code are Zihang Huang's work; this fork builds on them and keeps the original MIT license and notices. What this edition adds:
+
+- **The full National Pokédex.** From the original 151 Kanto species to all 1,025 (generations I–IX). Data comes from PokéAPI; Chinese and Japanese entries missing there come from the official Pokémon sites. No. 650 onward use Pokémon Showdown's Gen 5-style sprites.
+- **A searchable archive.** Search by name, number or type, filter by generation, keep generation headers in view, switch between grid and list, and reopen at the entry you were viewing.
+- **A cry button.** Play a Pokémon's cry from its record, next to Read aloud.
+- **A 1,025-species recognition model.** EfficientNet-B0 retrained on game sprites and artwork, trading card images and three public datasets. On the held-out test images it names the right Pokémon 93.8% of the time (cards 89.6%); real camera accuracy may be lower and has not been measured yet. See [model notes](iDex/Recognition/MODEL.md).
+- **Strict mode and Fun mode.** Settings → Recognition mode; see “Is it Professor Oak accurate?” below.
+- **Updated credits.** Settings → Credits and the documentation list every new data, sprite, audio and training source.
+- **Cloud builds.** GitHub Actions workflows build and test the app and export the model on a macOS runner.
+
 ## A little field trip
 
 | Scan it | Read in English | 简体中文 | 日本語 |
@@ -49,7 +61,18 @@ xcodebuild test -project iDex.xcodeproj -scheme iDex \
 
 ## Is it Professor Oak accurate?
 
-Professor Oak has declined to comment. The model knows all 1,025 species and can still mistake unrelated objects for Pokémon; Settings offers a Strict (default) and a Relaxed recognition threshold. Scores aren't calibrated probabilities; low-confidence guesses don't automatically become discoveries or trigger narration. Real camera accuracy and physical hinge behavior still need device testing.
+Professor Oak has declined to comment. The model knows all 1,025 species and can still mistake unrelated objects for Pokémon. Scores aren't calibrated probabilities; low-confidence guesses don't automatically become discoveries or trigger narration. Real camera accuracy and physical hinge behavior still need device testing.
+
+**Strict mode or Fun mode?** There is one trained model. The two modes in Settings → Recognition mode differ only in how sure it must be before a scan counts as identified (recorded as discovered and read aloud). Every scan still shows its best match.
+
+| | Strict mode (default) | Fun mode (original iDex setting) |
+| --- | --- | --- |
+| Rule | Score ≥ 95% at softmax temperature 0.75 and top-two logit margin ≥ 3, chosen on validation data | Score ≥ 25% and logit margin ≥ 0.5 |
+| Test images identified automatically | 75.8% | 93.4% |
+| …of which correct | 99.7% | 97.4% |
+| Everyday photos mistaken for a Pokémon | 3.1% | 40.6% |
+
+Strict mode keeps your discovery log clean but asks for rescans more often. Fun mode identifies almost anything you point it at, including things that are not Pokémon. The figures come from held-out test images (12,449 Pokémon images and 64 COCO everyday photos), not from real camera use.
 
 ## Under the hood
 
@@ -65,7 +88,7 @@ The packaged model is excluded; contributor trained-model rights are offered und
 
 ## Thanks, humans
 
-Sprites: [Pokémon Database](https://pokemondb.net/sprites). Data and cries: [PokéAPI](https://github.com/PokeAPI/pokeapi). Model: locally trained EfficientNet-B0 (FP32), built with [TorchVision](https://docs.pytorch.org/vision/stable/models/efficientnet.html). Fonts: Press Start 2P and Fusion Pixel (SIL OFL 1.1).
+Original app: [Zihang Huang](https://github.com/zihang-huang/iDex). Sprites: [Pokémon Database](https://pokemondb.net/sprites) and, from No. 650, [Pokémon Showdown](https://play.pokemonshowdown.com/sprites/gen5/). Data and cries: [PokéAPI](https://github.com/PokeAPI/pokeapi); missing Chinese and Japanese entries: [pokemon.cn](https://www.pokemon.cn/play/pokedex/) and [ポケモンずかん](https://zukan.pokemon.co.jp/). Training images: [PokeAPI sprites](https://github.com/PokeAPI/sprites), [Pokémon TCG API](https://pokemontcg.io/), three Hugging Face datasets and COCO backgrounds ([model notice](iDex/Recognition/MODEL_NOTICE.md)). Model: locally trained EfficientNet-B0 (FP32), built with [TorchVision](https://docs.pytorch.org/vision/stable/models/efficientnet.html). Fonts: Press Start 2P and Fusion Pixel (SIL OFL 1.1).
 
 [Full asset credits](iDex/Catalog/ATTRIBUTION.md) · [Model provenance](iDex/Recognition/MODEL.md)
 

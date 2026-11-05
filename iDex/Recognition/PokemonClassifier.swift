@@ -19,6 +19,25 @@ struct RecognitionResult: Sendable {
     let logitMargin: Double
 }
 
+/// Which scans count as an automatic identification (discovery and narration). Every scan still
+/// shows its best match. Both tiers are heuristics, not calibrated probabilities (see MODEL.md).
+/// Nonisolated so the classifier actor can read it under the project's MainActor default.
+nonisolated enum RecognitionThreshold: String, CaseIterable, Identifiable, Sendable {
+    /// Chosen on the national model's validation split: fewer automatic matches, rarely wrong.
+    case strict
+    /// The original iDex heuristic: more automatic matches, and unrelated objects often pass.
+    case relaxed
+
+    static let standard = RecognitionThreshold.strict
+
+    var id: String { rawValue }
+    /// Divides the logits before softmax; the displayed confidence uses the same value.
+    var temperature: Double { self == .strict ? 0.75 : 1 }
+    var minimumConfidence: Double { self == .strict ? 0.95 : 0.25 }
+    /// Compared with the raw logits, independent of the temperature.
+    var minimumLogitMargin: Double { self == .strict ? 3 : 0.5 }
+}
+
 enum RecognitionError: LocalizedError {
     case missingModel
     case invalidLabels
@@ -37,9 +56,6 @@ enum RecognitionError: LocalizedError {
 actor PokemonClassifier {
     /// Bundled Core ML model; its logits follow `pokemon_labels.json` order.
     static let modelName = "KantoClassifier"
-    /// Automatic discovery needs both; heuristics, not a calibrated probability (see MODEL.md).
-    static let minimumConfidence = 0.25
-    static let minimumLogitMargin = 0.5
 
     private var model: MLModel?
     private var labels: [Label] = []
@@ -49,7 +65,7 @@ actor PokemonClassifier {
         let name: String
     }
 
-    func classify(image: CGImage) async throws -> RecognitionResult {
+    func classify(image: CGImage, threshold: RecognitionThreshold) async throws -> RecognitionResult {
         try loadIfNecessary()
         guard let model else { throw RecognitionError.missingModel }
         let imageValue = try MLFeatureValue(
@@ -67,24 +83,31 @@ actor PokemonClassifier {
         #if DEBUG
         print("iDex model: image \(image.width)x\(image.height), output type \(values.dataType.rawValue), logits range \(logits.min() ?? 0)...\(logits.max() ?? 0)")
         #endif
-        guard logits.allSatisfy(\.isFinite), let maximum = logits.max() else {
-            throw RecognitionError.invalidOutput
+        guard let ranking = Self.rank(logits, threshold: threshold) else { throw RecognitionError.invalidOutput }
+        let candidates = ranking.top.map { entry in
+            RecognitionCandidate(dexID: labels[entry.index].id,
+                                 name: labels[entry.index].name,
+                                 confidence: entry.confidence,
+                                 logit: logits[entry.index])
         }
-        let exponents = logits.map { exp($0 - maximum) }
+        // Always offer the top candidate. Acceptance only controls automatic discovery
+        // and narration; neither tier is an unknown-object detector.
+        return RecognitionResult(candidates: candidates, accepted: ranking.accepted ? candidates[0] : nil,
+                                 logitMargin: ranking.margin)
+    }
+
+    /// The three best logit indices with their tempered softmax scores, the raw top-two margin,
+    /// and whether the first passes `threshold`. Nil unless there are two or more finite logits.
+    nonisolated static func rank(_ logits: [Double], threshold: RecognitionThreshold)
+        -> (top: [(index: Int, confidence: Double)], margin: Double, accepted: Bool)? {
+        guard logits.count >= 2, logits.allSatisfy(\.isFinite), let maximum = logits.max() else { return nil }
+        let exponents = logits.map { exp(($0 - maximum) / threshold.temperature) }
         let denominator = exponents.reduce(0, +)
         let indices = logits.indices.sorted { logits[$0] > logits[$1] }
-        let candidates = indices.prefix(3).map { index in
-            RecognitionCandidate(dexID: labels[index].id,
-                                 name: labels[index].name,
-                                 confidence: exponents[index] / denominator,
-                                 logit: logits[index])
-        }
+        let top = indices.prefix(3).map { (index: $0, confidence: exponents[$0] / denominator) }
         let margin = logits[indices[0]] - logits[indices[1]]
-        let first = candidates[0]
-        // Always offer the top candidate. Acceptance only controls automatic discovery
-        // and narration; these relaxed heuristics are not an unknown-object detector.
-        let accepted = first.confidence >= Self.minimumConfidence && margin >= Self.minimumLogitMargin ? first : nil
-        return RecognitionResult(candidates: candidates, accepted: accepted, logitMargin: margin)
+        let accepted = top[0].confidence >= threshold.minimumConfidence && margin >= threshold.minimumLogitMargin
+        return (top, margin, accepted)
     }
 
     private func loadIfNecessary() throws {

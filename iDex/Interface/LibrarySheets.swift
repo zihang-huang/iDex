@@ -193,6 +193,28 @@ struct SettingsSheet: View {
                         .accessibilityIdentifier("sound-toggle")
                     Button(store.text("Stop reading", "停止朗读", "読み上げを停止")) { audio.stopSpeaking() }
                 }
+                Section {
+                    ForEach(RecognitionThreshold.allCases) { threshold in
+                        Button {
+                            store.recognitionThreshold = threshold
+                            store.audio.play(.button)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(thresholdTitle(threshold)).foregroundStyle(.primary)
+                                    Text(thresholdDetail(threshold)).font(.footnote).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if store.recognitionThreshold == threshold { Image(systemName: "checkmark").foregroundStyle(.green) }
+                            }
+                        }.accessibilityIdentifier("threshold-\(threshold.rawValue)")
+                            .accessibilityAddTraits(store.recognitionThreshold == threshold ? .isSelected : [])
+                    }
+                } header: {
+                    Text(store.text("Recognition threshold", "识别门槛", "識別のしきい値"))
+                } footer: {
+                    Text(store.text("Below the threshold, iDex still shows its best match but does not mark it discovered or read it aloud. Applies to the next scan.", "未达门槛时仍会显示最可能的结果，但不会自动收录或朗读。从下一次扫描起生效。", "しきい値に満たない場合も最有力候補は表示されますが、発見済みへの登録と読み上げは行いません。次のスキャンから適用されます。"))
+                }
                 Section(store.text("Field guide", "使用指南", "使い方")) {
                     Label(store.text("Point at a Pokémon, then identify.", "将取景器对准宝可梦，轻点识别。", "ポケモンにカメラを向けて、スキャンします。"), systemImage: "viewfinder")
                     Label(store.text("Unfold to reveal the research panel.", "展开屏幕，查看内部研究面板。", "画面を開くと、リサーチパネルが表示されます。"), systemImage: "book")
@@ -209,6 +231,10 @@ struct SettingsSheet: View {
                     Link(store.text("Pokédex data · PokéAPI", "图鉴数据 · PokéAPI", "図鑑データ · PokéAPI"), destination: URL(string: "https://github.com/PokeAPI/pokeapi")!)
                     Link(store.text("Missing Chinese entries · pokemon.cn", "补充中文图鉴 · 宝可梦官方网站", "中国語の補足 · pokemon.cn"), destination: URL(string: "https://www.pokemon.cn/play/pokedex/")!)
                     Link(store.text("Missing Japanese entries · Pokémon Zukan", "补充日文图鉴 · ポケモンずかん", "日本語の補足 · ポケモンずかん"), destination: URL(string: "https://zukan.pokemon.co.jp/")!)
+                    Link(store.text("Cries · PokéAPI", "叫声 · PokéAPI", "鳴き声 · PokéAPI"), destination: URL(string: "https://github.com/PokeAPI/cries")!)
+                    NavigationLink(store.text("Recognition model & training data", "识别模型与训练数据", "識別モデルと学習データ")) {
+                        ModelCreditsView(store: store)
+                    }.accessibilityIdentifier("model-credits")
                     Text("Press Start 2P · Fusion Pixel · SIL OFL 1.1").font(.caption).foregroundStyle(.secondary)
                 }
             }.navigationTitle(store.text("Device settings", "设备设置", "デバイス設定"))
@@ -218,5 +244,47 @@ struct SettingsSheet: View {
             .environment(\.locale, Locale(identifier: store.language.localeIdentifier))
             .statusBarHidden()
             .persistentSystemOverlays(.hidden)
+    }
+
+    private func thresholdTitle(_ threshold: RecognitionThreshold) -> String {
+        switch threshold {
+        case .strict: store.text("Strict", "严格", "厳しめ")
+        case .relaxed: store.text("Relaxed (original iDex)", "宽松（原版设置）", "ゆるめ（オリジナル設定）")
+        }
+    }
+
+    private func thresholdDetail(_ threshold: RecognitionThreshold) -> String {
+        switch threshold {
+        case .strict: store.text("Fewer automatic matches; rarely wrong, rarely fooled by other objects.", "自动识别较少，但很少认错，也很少把其他物品当成宝可梦。", "自動識別は少なめですが、誤認やポケモン以外への反応はまれです。")
+        case .relaxed: store.text("More automatic matches; more mistakes, and other objects often pass.", "自动识别更多，但更容易认错，其他物品也常被当成宝可梦。", "自動識別は多めですが、誤認が増え、ポケモン以外にも反応しやすくなります。")
+        }
+    }
+}
+
+/// Sources behind the bundled classifier; it ships weights only, never training images.
+private struct ModelCreditsView: View {
+    let store: DexStore
+
+    var body: some View {
+        Form {
+            Section(store.text("Recognition model", "识别模型", "識別モデル")) {
+                Text("EfficientNet-B0 · TorchVision · BSD 3-Clause").font(.footnote)
+                Text(store.text("Fine-tuned for iDex from ImageNet weights. Model contributions are offered under CC BY-NC-SA 4.0.", "由 ImageNet 预训练权重为 iDex 微调而成。模型贡献部分以 CC BY-NC-SA 4.0 授权。", "ImageNet の学習済み重みから iDex 用に微調整しました。モデルの貢献部分は CC BY-NC-SA 4.0 で提供します。"))
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            Section {
+                Link(store.text("Game sprites & artwork · PokéAPI", "游戏像素图与官方插画 · PokéAPI", "ゲームのスプライトと公式イラスト · PokéAPI"), destination: URL(string: "https://github.com/PokeAPI/sprites")!)
+                Link(store.text("Card images · Pokémon TCG API", "卡牌图片 · Pokémon TCG API", "カード画像 · Pokémon TCG API"), destination: URL(string: "https://pokemontcg.io/")!)
+                Link("JJMack · pokemon-classification-gen1-9", destination: URL(string: "https://huggingface.co/datasets/JJMack/pokemon-classification-gen1-9")!)
+                Link("keremberke · pokemon-classification", destination: URL(string: "https://huggingface.co/datasets/keremberke/pokemon-classification")!)
+                Link("sgtsaughter · pokemon-classification-images-151", destination: URL(string: "https://huggingface.co/datasets/sgtsaughter/pokemon-classification-images-151")!)
+                Link(store.text("Background photos · COCO", "背景照片 · COCO", "背景写真 · COCO"), destination: URL(string: "https://cocodataset.org/")!)
+            } header: {
+                Text(store.text("Training data", "训练数据", "学習データ"))
+            } footer: {
+                Text(store.text("No training image is included in the app. Rights in Pokémon imagery remain with their owners.", "App 内不包含任何训练图片。宝可梦相关图像的权利归其权利人所有。", "学習画像はアプリに含まれていません。ポケモンの画像に関する権利は各権利者に帰属します。"))
+            }
+        }.navigationTitle(store.text("Recognition model", "识别模型", "識別モデル"))
+            .navigationBarTitleDisplayMode(.inline)
     }
 }

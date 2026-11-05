@@ -120,7 +120,7 @@ struct RecognitionTests {
         let image = try #require(renderOpaque(sprite: sprite))
         let classifier = PokemonClassifier()
 
-        let result = try await classifier.classify(image: image)
+        let result = try await classifier.classify(image: image, threshold: .relaxed)
 
         let accepted = try #require(result.accepted)
         #expect(accepted.dexID == dexID)
@@ -133,7 +133,7 @@ struct RecognitionTests {
     @Test("Blank images still offer a best match without confirming a discovery", arguments: [false, true])
     func rejectsBlankImages(black: Bool) async throws {
         let image = try #require(renderOpaque(sprite: nil, background: black ? .black : .white))
-        let result = try await PokemonClassifier().classify(image: image)
+        let result = try await PokemonClassifier().classify(image: image, threshold: .relaxed)
 
         #expect(result.accepted == nil)
         #expect(result.candidates.count == 3)
@@ -162,6 +162,56 @@ struct RecognitionTests {
         #expect(store.entryStatusTitle == "BEST MATCH")
         store.language = .zhHans
         #expect(store.entryStatusTitle == "最可能匹配")
+    }
+
+    @Test("Strict acceptance needs a tempered score of .95 and a raw margin of 3")
+    func strictThresholdNeedsScoreAndMargin() throws {
+        let clear = try #require(PokemonClassifier.rank([10, 6.5, 0, -1], threshold: .strict))
+        #expect(clear.accepted)
+        #expect(clear.top.map(\.index) == [0, 1, 2])
+        #expect(abs(clear.margin - 3.5) < 1e-12)
+        // A margin of 2 clears the relaxed tier but not the strict one.
+        let close = try #require(PokemonClassifier.rank([5, 3, 0, 0], threshold: .strict))
+        #expect(!close.accepted)
+        #expect(try #require(PokemonClassifier.rank([5, 3, 0, 0], threshold: .relaxed)).accepted)
+        // A large margin with a diffuse score still fails strict.
+        let diffuse = try #require(PokemonClassifier.rank([4, 0.9] + Array(repeating: 0.9, count: 40), threshold: .strict))
+        #expect(diffuse.margin >= 3)
+        #expect(!diffuse.accepted)
+    }
+
+    @Test("The strict temperature sharpens the displayed score; the margin stays raw")
+    func temperatureAppliesToScoresOnly() throws {
+        let logits = [2.0, 1.0, 0.5]
+        let strict = try #require(PokemonClassifier.rank(logits, threshold: .strict))
+        let relaxed = try #require(PokemonClassifier.rank(logits, threshold: .relaxed))
+        #expect(strict.margin == relaxed.margin)
+        #expect(strict.top[0].confidence > relaxed.top[0].confidence)
+        let expected = 1 / (1 + exp(-1 / 0.75) + exp(-1.5 / 0.75))
+        #expect(abs(strict.top[0].confidence - expected) < 1e-12)
+        #expect(abs(strict.top.map(\.confidence).reduce(0, +) - 1) < 1e-12)
+    }
+
+    @Test("Ranking rejects outputs that cannot form a top-two margin")
+    func rankRejectsInvalidOutputs() {
+        for logits in [[], [1], [1, .nan], [1, .infinity]] as [[Double]] {
+            #expect(PokemonClassifier.rank(logits, threshold: .strict)?.margin == nil)
+        }
+    }
+
+    @Test("The chosen threshold persists and defaults to strict")
+    func thresholdPersists() {
+        let key = "idex.recognitionThreshold"
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(saved, forKey: key) }
+        UserDefaults.standard.removeObject(forKey: key)
+        #expect(DexStore().recognitionThreshold == .strict)
+        let store = DexStore()
+        store.recognitionThreshold = .relaxed
+        #expect(UserDefaults.standard.string(forKey: key) == "relaxed")
+        #expect(DexStore().recognitionThreshold == .relaxed)
+        UserDefaults.standard.set("unknown", forKey: key)
+        #expect(DexStore().recognitionThreshold == .strict)
     }
 
     @Test("Model labels map to bundled catalog entries")

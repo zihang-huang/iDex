@@ -24,7 +24,14 @@ shasum -a 256 iDex/Recognition/KantoClassifier.mlpackage/Data/com.apple.CoreML/w
 
 Photo import corrects orientation, composites alpha onto white, bounds thumbnail area to approximately4.2 megapixels, and produces a centered square no larger than1200px. The classifier creates a BGRA-backed image feature with RGB model semantics and `scaleFill` at224px. Camera processing rotates the retained frame and takes a centered square. Normalization is not repeated in Swift.
 
-`PokemonClassifier` serializes loading and inference in an actor. Physical devices use `.all`; Simulator uses `.cpuOnly`. The app computes ordinary softmax at temperature1, offers the top three results, and accepts an automatic discovery/narration only when the first score is at least.25 and the first/second raw-logit margin is at least.5. Other results remain best guesses. These heuristics are not a trained unknown detector or calibrated probability. There is no background class; unrelated objects and non-Kanto species can still be accepted.
+`PokemonClassifier` serializes loading and inference in an actor. Physical devices use `.all`; Simulator uses `.cpuOnly`. The app offers the top three results and accepts an automatic discovery/narration only when the first softmax score and the first/second raw-logit margin both reach the threshold chosen in Settings (`RecognitionThreshold`, stored as `idex.recognitionThreshold`):
+
+| Threshold | Softmax temperature | Minimum score | Minimum raw margin | Origin |
+| --- | --- | --- | --- | --- |
+| Strict (default) | 0.75 | .95 | 3 | Chosen on the national model's validation split |
+| Relaxed | 1 | .25 | .5 | The original iDex heuristic |
+
+The displayed score uses the same temperature as the chosen threshold; the margin always uses raw logits. A new threshold applies from the next scan. Other results remain best guesses. Neither tier is a trained unknown detector or calibrated probability. There is no background class; unrelated objects can still be accepted, far more often under Relaxed.
 
 ## Validation and limits
 

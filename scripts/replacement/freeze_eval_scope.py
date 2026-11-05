@@ -4,12 +4,17 @@ Exclude every positive test group touching a named incumbent training source.
 Remaining sgtsaughter examples still have unknown baseline exposure, not certified
 independence. Known-source test outputs remain explicitly diagnostic only.
 """
+import argparse
+from labels import add_labels, read_labels
 import collections
 import hashlib
 import json
 from pathlib import Path
 
-root=Path('artifacts/replacement');out=root/'evaluation_scope.json'
+parser=argparse.ArgumentParser(); add_labels(parser)
+parser.add_argument('--root',type=Path,default=Path('artifacts/replacement'))
+args=parser.parse_args(); labels=read_labels(args.labels)
+root=args.root;out=root/'evaluation_scope.json'
 if out.exists():raise SystemExit('Evaluation scope already frozen')
 manifest=root/'data/manifest.jsonl'
 rows=[json.loads(s) for s in manifest.read_text().splitlines()]

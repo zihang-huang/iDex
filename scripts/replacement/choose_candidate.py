@@ -6,16 +6,19 @@ from pathlib import Path
 import numpy as np
 import torch
 from metrics import load_rows,metrics
+from labels import add_labels, read_labels, check_labels
 
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--predictions',type=Path,required=True);p.add_argument('--out',type=Path,default=Path('artifacts/replacement/selection.json'))
+    add_labels(p)
     a=p.parse_args()
     if a.out.exists(): raise ValueError('Selection already frozen; no overwrite')
     rows=load_rows(a.predictions)
     if any(r['split'] not in ['val','ood_val'] for r in rows): raise ValueError('Only validation inputs may choose thresholds')
     state=torch.load(a.checkpoint,map_location='cpu',weights_only=True)
+    check_labels(state,read_labels(a.labels))
     receipt=json.loads(a.predictions.with_suffix('.metadata.json').read_text())
     actual_checkpoint_sha=hashlib.sha256(a.checkpoint.read_bytes()).hexdigest()
     manifest=Path(state['config']['manifest']);sha=hashlib.sha256(manifest.read_bytes()).hexdigest()
@@ -55,6 +58,8 @@ def main():
     if choices: policy.update(enabled=True,abstain_all=False)
     if sha!=state['manifest_sha256']: raise ValueError('manifest mismatch')
     record=dict(checkpoint=str(a.checkpoint),checkpoint_sha256=hashlib.sha256(a.checkpoint.read_bytes()).hexdigest(),arch=state['config']['arch'],size=state['config']['size'],manifest_sha256=sha,validation_predictions_sha256=hashlib.sha256(a.predictions.read_bytes()).hexdigest(),selection_rule='Validation top1 among bounded candidates; diagnostic temperature min known NLL, threshold max known coverage with >=95% accepted known precision and <=5% FAR per negative source',policy=policy,promotion=False,reason='Independent camera test, dataset rights and Apple validation pending')
+    record.update(labels=state['labels'],validation_metrics=metrics(rows,state['labels']))
+    a.out.parent.mkdir(parents=True,exist_ok=True)
     a.out.write_text(json.dumps(record,indent=2));print(json.dumps(record,indent=2))
 
 

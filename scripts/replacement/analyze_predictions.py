@@ -18,6 +18,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageOps
 
 from metrics import CAVEAT, PAIRED_FIELDS, SCALARS, load_rows, metrics
+from labels import add_labels,read_labels,generations
 
 
 ORIGINAL = dict(confidence=.25, margin=.5, temperature=1.)
@@ -129,6 +130,12 @@ def policy_summary(rows, labels, policy):
                   accepted_known_accuracy=None,
                   unknown_far=0. if result['counts']['unknown'] else None)
     result['counts']['accepted'] = 0
+    for buckets in result['slices'].values():
+        for value in buckets.values():
+            value.update(accepted_coverage=0.,accepted_accuracy=None,
+                         accepted_known_coverage=0. if value['counts']['known'] else None,
+                         accepted_known_accuracy=None,unknown_far=0. if value['counts']['unknown'] else None)
+            value['counts']['accepted']=0
     settings = result['settings']
     settings.pop('confidence_threshold')
     settings.pop('raw_logit_margin_threshold')
@@ -168,11 +175,13 @@ def case_record(base, candidate, truth, labels, policy):
 
 def slices(baseline, candidate, truth, labels, policy):
     report = {}
-    for field in ('source', 'form', 'shiny'):
+    generation=generations()
+    for field in ('source', 'form', 'shiny','generation'):
         populations = collections.defaultdict(list)
         present = nonnull = 0
         for i, row in enumerate(baseline):
             record = truth[row['sha256']]
+            if field=='generation': record=dict(record,generation=generation.get(record['target_id']))
             present += field in record
             nonnull += field in record and record[field] is not None
             # Typed JSON keys preserve true/false, null, and absent distinctly;
@@ -276,13 +285,37 @@ def per_class_csv(path, baseline, candidate):
             writer.writerow(row)
 
 
+def candidate_only(args,labels):
+    rows=load_rows(args.candidate)
+    # Reuse exact manifest/population validation, without claiming a comparison.
+    _,rows,truth=paired_rows(rows,rows,load_rows(args.manifest),labels)
+    policy=frozen_policy(args.selection,args.candidate,args.manifest)
+    summary=metrics(rows,labels,**ORIGINAL)
+    args.out.mkdir(parents=True,exist_ok=True)
+    write_json(args.out/'report.json',dict(candidate_original=summary,
+        candidate_frozen=policy_summary(rows,labels,policy),frozen_policy=policy,
+        paired_comparison=dict(status='skipped',reason='No same-label baseline supplied'),
+        provenance={key:dict(path=str(getattr(args,key)),sha256=digest(getattr(args,key)))
+                    for key in ('candidate','manifest','labels')}))
+    write_json(args.out/'slices.json',summary['slices'])
+    with (args.out/'per_class.csv').open('w',newline='',encoding='utf-8') as out:
+        writer=csv.DictWriter(out,fieldnames=list(summary['per_class'][0]));writer.writeheader();writer.writerows(summary['per_class'])
+    write_jsonl(args.out/'cases.jsonl',[dict(sha256=r['sha256'],target_id=r['target_id'],
+        source=r['source'],candidate=describe(r,labels),path=truth[r['sha256']].get('path')) for r in rows])
+    print(json.dumps(dict(out=str(args.out),images=len(rows),paired_comparison='skipped')))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for argument in ('baseline', 'candidate', 'manifest', 'labels', 'out'):
+    for argument in ('candidate', 'manifest', 'out'):
         parser.add_argument('--' + argument, type=Path, required=True)
+    parser.add_argument('--baseline',type=Path);add_labels(parser)
     parser.add_argument('--selection', type=Path, help='frozen candidate policy and provenance')
     args = parser.parse_args()
-    labels = json.loads(args.labels.read_text(encoding='utf-8-sig'))
+    labels = read_labels(args.labels)
+    if not args.baseline:
+        candidate_only(args,labels)
+        return
     baseline, candidate, truth = paired_rows(load_rows(args.baseline), load_rows(args.candidate),
                                             load_rows(args.manifest), labels)
     policy = frozen_policy(args.selection, args.candidate, args.manifest)

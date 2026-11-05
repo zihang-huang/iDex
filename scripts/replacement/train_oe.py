@@ -9,26 +9,28 @@ import torch
 from torch.utils.data import DataLoader
 from model import load_checkpoint
 from train import Images,seed_everything,validation,rows_from
+from labels import add_labels,read_labels,check_labels
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--checkpoint',type=Path,required=True);p.add_argument('--resume',action='store_true');a=p.parse_args()
-    root=Path('artifacts/replacement');out=root/'runs/efficientnet224-oe'
+    p=argparse.ArgumentParser();p.add_argument('--checkpoint',type=Path,required=True);p.add_argument('--resume',action='store_true');add_labels(p)
+    p.add_argument('--root',type=Path,default=Path('artifacts/replacement'));a=p.parse_args()
+    root=a.root;out=root/'runs/efficientnet224-oe';labels=read_labels(a.labels)
     if out.exists() and not a.resume:raise ValueError('OE run exists; resume explicitly')
     assert (root/'negative_review_completed.json').exists(),'Visual negative audit required'
     manifest=root/'data/manifest.jsonl';negative=root/'negative_train_manifest.jsonl'
     sha=hashlib.sha256(manifest.read_bytes()).hexdigest();negsha=hashlib.sha256(negative.read_bytes()).hexdigest()
     if json.loads((root/'negative_review_completed.json').read_text())['manifest_sha256']!=negsha:raise ValueError('Negative audit manifest mismatch')
     torch.set_num_threads(6);seed_everything(20261047)
-    model,state=load_checkpoint(a.checkpoint)
+    model,state=load_checkpoint(a.checkpoint,a.labels)
     if state['manifest_sha256']!=sha:raise ValueError('Frozen positive manifest mismatch')
     model=model.cuda().to(memory_format=torch.channels_last)
     positive=rows_from(manifest,'train');val=rows_from(manifest,'val')
     negatives=[r for r in (json.loads(s) for s in negative.read_text().splitlines()) if r['use']]
     assert len(negatives)>=100
-    train_loader=DataLoader(Images(positive,224,True),batch_size=64,shuffle=True,num_workers=4,pin_memory=True)
-    val_loader=DataLoader(Images(val,224),batch_size=64,num_workers=4,pin_memory=True)
-    neg_loader=DataLoader(Images(negatives,224,True),batch_size=16,shuffle=True,num_workers=2,pin_memory=True,persistent_workers=True)
+    train_loader=DataLoader(Images(positive,224,True,labels),batch_size=64,shuffle=True,num_workers=4,pin_memory=True)
+    val_loader=DataLoader(Images(val,224,labels=labels),batch_size=64,num_workers=4,pin_memory=True)
+    neg_loader=DataLoader(Images(negatives,224,True,labels),batch_size=16,shuffle=True,num_workers=2,pin_memory=True,persistent_workers=True)
     optimizer=torch.optim.AdamW(model.parameters(),lr=3e-5,weight_decay=.001)
     scheduler=torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=4)
     out.mkdir(parents=True,exist_ok=True);(out/'source').mkdir(exist_ok=True)
@@ -38,6 +40,7 @@ def main():
     start=0
     if a.resume:
         last=torch.load(out/'last.pt',map_location='cpu',weights_only=True)
+        check_labels(last,labels)
         if last['manifest_sha256']!=sha or last['negative_manifest_sha256']!=negsha or last['config']!=config:raise ValueError('OE resume contract mismatch')
         model.load_state_dict(last['model']);optimizer.load_state_dict(last['optimizer']);scheduler.load_state_dict(last['scheduler']);start=last['epoch']
     begin=time.time();torch.cuda.reset_peak_memory_stats()

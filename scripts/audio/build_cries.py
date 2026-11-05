@@ -41,11 +41,13 @@ def build(entry):
     # Some upstream .ogg paths (including Pikachu) contain MP3 data. Let
     # ffmpeg detect and validate the actual codec rather than the extension.
     destination = OUTPUT / f'pokemon-cry-{dex_id:03d}.wav'
-    subprocess.run([
-        'ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', str(source),
-        '-map_metadata', '-1', '-ac', '1', '-ar', '22050',
-        '-c:a', 'pcm_s16le', '-fflags', '+bitexact', '-flags:a', '+bitexact', str(destination)
-    ], check=True)
+    # Keep bundled cries byte-for-byte: different ffmpeg builds resample to different bytes.
+    if not destination.exists():
+        subprocess.run([
+            'ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', str(source),
+            '-map_metadata', '-1', '-ac', '1', '-ar', '22050',
+            '-c:a', 'pcm_s16le', '-fflags', '+bitexact', '-flags:a', '+bitexact', str(destination)
+        ], check=True)
     with wave.open(str(destination)) as audio:
         assert audio.getnchannels() == 1 and audio.getsampwidth() == 2
         assert audio.getframerate() == 22050 and audio.getnframes() > 0
@@ -62,12 +64,12 @@ def build(entry):
 def main():
     if not shutil.which('ffmpeg'):
         raise SystemExit('Install ffmpeg to regenerate cry assets; the app needs no external dependencies.')
-    entries = json.loads((ROOT / 'iDex/Resources/pokemon-kanto.json').read_text())
-    assert {entry['id'] for entry in entries} == set(range(1, 152))
+    entries = json.loads((ROOT / 'iDex/Resources/pokemon-national.json').read_text(encoding='utf-8'))
+    assert {entry['id'] for entry in entries} == set(range(1, len(entries) + 1))
     OUTPUT.mkdir(parents=True, exist_ok=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
         manifest = sorted(pool.map(build, entries), key=lambda item: item['id'])
-    (OUTPUT / 'cry-sources.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
+    (OUTPUT / 'cry-sources.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     (OUTPUT / 'PokeAPI-Cries-LICENSE.txt').write_bytes(download('LICENSE').read_bytes())
     print(f'Bundled {len(manifest)} cries ({sum((OUTPUT / item["file"]).stat().st_size for item in manifest):,} bytes).')
 

@@ -1,4 +1,4 @@
-"""Offline metrics for the 151-class replacement experiment (NumPy only).
+"""Offline metrics for a label-defined replacement experiment (NumPy only).
 
 Scores are fractions, not percentages. Labels define the logit column order.
 An optional row ``label_ids`` must match that order exactly. Absent this field,
@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+from labels import LABELS, label_ids, read_labels, generations
 
 
 CAVEAT = (
@@ -40,16 +41,7 @@ def load_rows(path):
 
 
 def _label_order(labels):
-    if not isinstance(labels, list) or len(labels) != 151:
-        raise ValueError('labels must be a list of 151 {id, name} records')
-    for label in labels:
-        if (not isinstance(label, dict) or type(label.get('id')) is not int
-                or not isinstance(label.get('name'), str) or not label['name'].strip()):
-            raise ValueError('every label requires an integer id and nonempty name')
-    ids = [label['id'] for label in labels]
-    if set(ids) != set(range(1, 152)):
-        raise ValueError('labels must contain each ID 1..151 exactly once')
-    return ids
+    return label_ids(labels)
 
 
 def _prepare(rows, labels, confidence, margin, temperature, ece_bins):
@@ -84,7 +76,7 @@ def _prepare(rows, labels, confidence, margin, temperature, ece_bins):
         seen.add(sha)
         if 'target_id' not in row or (row['target_id'] is not None and
                 (type(row['target_id']) is not int or row['target_id'] not in index)):
-            raise ValueError(f'row {i}: target_id must be 1..151 or null')
+            raise ValueError(f'row {i}: target_id must occur in labels or be null')
         if 'label_ids' in row:
             declared = row['label_ids']
             if (not isinstance(declared, list) or any(type(x) is not int for x in declared)
@@ -93,8 +85,8 @@ def _prepare(rows, labels, confidence, margin, temperature, ece_bins):
         if 'labels' in row and row['labels'] != labels:
             raise ValueError(f'row {i}: embedded labels differ from supplied labels')
         raw = row.get('logits')
-        if not isinstance(raw, (list, tuple)) or len(raw) != 151:
-            raise ValueError(f'row {i}: expected exactly 151 logits')
+        if not isinstance(raw, (list, tuple)) or len(raw) != len(ids):
+            raise ValueError(f'row {i}: expected exactly {len(ids)} logits')
         if any(isinstance(x, (str, bool)) or not isinstance(x, (int, float)) for x in raw):
             raise ValueError(f'row {i}: logits must be real numbers')
         values = np.asarray(raw, dtype=np.float64)
@@ -134,17 +126,17 @@ def _ratio(numerator, denominator):
 
 
 def _calculate(data, weights=None, detailed=False):
-    n = len(data['y'])
+    n = len(data['y']); classes = len(data['ids'])
     w = np.ones(n) if weights is None else weights
     known, accepted, correct = data['known'], data['accepted'], data['correct']
     kw = w * known
     total, nk, no = float(w.sum()), float(kw.sum()), float(w[~known].sum())
-    support = np.bincount(data['y'][known], weights=w[known], minlength=151)
-    predicted = np.bincount(data['prediction'][known], weights=w[known], minlength=151)
-    tp = np.bincount(data['y'][correct], weights=w[correct], minlength=151)
-    recall = np.divide(tp, support, out=np.zeros(151), where=support > 0)
-    precision = np.divide(tp, predicted, out=np.zeros(151), where=predicted > 0)
-    f1 = np.divide(2 * tp, support + predicted, out=np.zeros(151), where=(support + predicted) > 0)
+    support = np.bincount(data['y'][known], weights=w[known], minlength=classes)
+    predicted = np.bincount(data['prediction'][known], weights=w[known], minlength=classes)
+    tp = np.bincount(data['y'][correct], weights=w[correct], minlength=classes)
+    recall = np.divide(tp, support, out=np.zeros(classes), where=support > 0)
+    precision = np.divide(tp, predicted, out=np.zeros(classes), where=predicted > 0)
+    f1 = np.divide(2 * tp, support + predicted, out=np.zeros(classes), where=(support + predicted) > 0)
     supported = support > 0
     result = {f'top{k}': _ratio(float(w[data['hits'][k]].sum()), nk) for k in (1, 3, 5)}
     result.update(macro_recall=float(recall[supported].mean()) if supported.any() else None,
@@ -170,10 +162,10 @@ def _calculate(data, weights=None, detailed=False):
                                     f1=float(f1[i]) if support[i] + predicted[i] else None)
                                for i, value in enumerate(data['ids'])]
         wrong = known & ~correct
-        pairs = np.bincount(data['y'][wrong] * 151 + data['prediction'][wrong], minlength=151**2)
+        pairs = np.bincount(data['y'][wrong] * classes + data['prediction'][wrong], minlength=classes**2)
         nonzero = np.flatnonzero(pairs)
         order = sorted(nonzero, key=lambda x: (-pairs[x], x))[:20]
-        result['top_confusion_pairs'] = [dict(target_id=data['ids'][i // 151], predicted_id=data['ids'][i % 151],
+        result['top_confusion_pairs'] = [dict(target_id=data['ids'][i // classes], predicted_id=data['ids'][i % classes],
                                              count=int(pairs[i])) for i in order]
         result['calibration_bins'] = [dict(lower=i / data['ece_bins'], upper=(i + 1) / data['ece_bins'],
                                            count=int(bin_count[i]), confidence=_ratio(bin_conf[i], bin_count[i]),
@@ -189,7 +181,7 @@ def _settings(labels, confidence, margin, temperature, ece_bins):
                 label_ids=_label_order(labels),
                 label_order_sha256=hashlib.sha256(json.dumps(labels, sort_keys=True).encode()).hexdigest(),
                 label_order_assumption='Producer must emit logits in supplied label order; optional per-row label_ids are checked.',
-                metric_definitions='Closed-set and calibration metrics use known targets only; macro scores average supported true classes. Precision uses known-target predictions. Brier is summed over 151 classes. ECE uses equal-width confidence bins. Accepted accuracy includes accepted unknown images as errors; unknown_far uses unknown images only.')
+                metric_definitions='Closed-set and calibration metrics use known targets only; macro scores average supported true classes. Precision uses known-target predictions. Brier is summed over all supplied classes. ECE uses equal-width confidence bins. Accepted accuracy includes accepted unknown images as errors; unknown_far uses unknown images only.')
 
 
 def _bootstrap(prepared, replicates, seed):
@@ -219,7 +211,7 @@ def _interval(values, point):
 
 
 def metrics(rows, labels, confidence=.25, margin=.5, temperature=1., *, ece_bins=15,
-            bootstrap_replicates=0, seed=20261027):
+            bootstrap_replicates=0, seed=20261027, _slices=True):
     """Summarize predictions, optionally adding 95% percentile group-bootstrap CIs.
 
     Undefined denominators produce None (JSON null). Thresholds and temperature
@@ -231,6 +223,7 @@ def metrics(rows, labels, confidence=.25, margin=.5, temperature=1., *, ece_bins
         record['name'] = label['name']
     result['settings'] = _settings(labels, confidence, margin, temperature, ece_bins)
     result['baseline_contamination_caveat'] = CAVEAT
+    if _slices: result['slices'] = slice_metrics(data['rows'], labels, confidence, margin, temperature, ece_bins)
     if type(bootstrap_replicates) is not int or bootstrap_replicates < 0:
         raise ValueError('bootstrap_replicates must be a nonnegative integer')
     if bootstrap_replicates:
@@ -239,6 +232,21 @@ def metrics(rows, labels, confidence=.25, margin=.5, temperature=1., *, ece_bins
         result['bootstrap'] = dict(method='95% percentile group bootstrap', seed=seed,
                                    replicates=bootstrap_replicates, groups=group_count,
                                    caveat='Intervals condition on observed groups and class support; one group cannot estimate population uncertainty. Undefined replicates are omitted and counted.')
+    return result
+
+
+def slice_metrics(rows, labels, confidence=.25, margin=.5, temperature=1., ece_bins=15):
+    """Catalog generation is authoritative; unknown targets get a null slice."""
+    rows=list(rows);generation=generations(); result={}
+    for key in ('source','generation'):
+        buckets={}
+        for row in rows:
+            value=row['source'] if key=='source' else generation.get(row['target_id'])
+            buckets.setdefault(str(value) if value is not None else 'unknown',[]).append(row)
+        result[key]={}
+        for value,items in sorted(buckets.items()):
+            summary=metrics(items,labels,confidence,margin,temperature,ece_bins=ece_bins,_slices=False)
+            result[key][value]={k:summary[k] for k in (*SCALARS,'counts')}
     return result
 
 
@@ -296,7 +304,7 @@ def main():
     subcommands = parser.add_subparsers(dest='command', required=True)
     for name in ('summarize', 'compare'):
         command = subcommands.add_parser(name)
-        command.add_argument('--labels', type=Path, required=True)
+        command.add_argument('--labels', type=Path, default=LABELS)
         command.add_argument('--confidence', type=float, default=.25)
         command.add_argument('--margin', type=float, default=.5, help='raw, unscaled logit margin')
         command.add_argument('--temperature', type=float, default=1.)
@@ -316,7 +324,7 @@ def main():
             command.add_argument('--baseline-margin', type=float,
                                  help='validation-frozen baseline raw logit margin; defaults to --margin')
     args = parser.parse_args()
-    labels = json.loads(args.labels.read_text(encoding='utf-8-sig'))
+    labels = read_labels(args.labels)
     def selected(path):
         rows = load_rows(path)
         return [row for row in rows if not args.split or row.get('split') in args.split]

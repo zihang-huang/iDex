@@ -8,6 +8,18 @@
 
 原生 SwiftUI · English / 简体中文 / 日本語 · 设备端 Core ML
 
+## 关于这个升级版
+
+这是 rom0718 在 [Zihang Huang 的原版 iDex](https://github.com/zihang-huang/iDex) 基础上做的升级版。App 的原始设计与代码均出自原作者 Zihang Huang；本分支在其基础上扩展，并保留原有的 MIT 许可证与各项声明。这个版本新增了：
+
+- **完整全国图鉴。** 从原版的 151 种关都宝可梦扩展到第一至第九世代全部 1025 种。数据来自 PokéAPI，其中缺失的中文、日文图鉴文本取自宝可梦官方网站；第 650 号起的像素图使用 Pokémon Showdown 的第五世代风格像素图。
+- **可搜索的图鉴列表。** 按名称、编号或属性搜索，按世代筛选，世代标题随滚动吸顶，可在网格与列表之间切换，重新打开时回到上次查看的位置。
+- **叫声按钮。** 在图鉴记录「朗读」旁边，单独播放这只宝可梦的叫声。
+- **可识别 1025 种的识别模型。** 用游戏像素图与官方插画、卡牌图片和三套公开数据集重新训练 EfficientNet-B0。在训练时没见过的测试图上认对 93.8%（卡牌 89.6%）；真实相机拍摄的准确率可能更低，目前尚未实测。详见[模型说明](iDex/Recognition/MODEL.md)。
+- **严格模式与娱乐模式。** 设置 → 识别模式，详见下文「有大木博士那么准吗？」。
+- **更新的制作信息。** 设置 → 制作信息与项目文档列出了所有新增的数据、像素图、音频与训练数据来源。
+- **云端编译。** 用 GitHub Actions 编译和测试 App，并在 macOS 云端机器上导出模型。
+
 ## 出门考察一下
 
 | 扫一扫 | 英文图鉴 | 简体中文 | 日本語 |
@@ -20,10 +32,10 @@
 
 ## 背包里有什么？
 
-- **关都地区的151种宝可梦。** 像素图、基础能力、观察记录，还有叫声。
+- **全国图鉴全部1025种宝可梦。** 像素图、基础能力、观察记录，还有叫声；图鉴可按世代筛选和搜索。
 - **拍照扫描，也能导入照片。** 识别在 iPhone 上完成，照片仅保留在内存中。
 - **展开屏幕，研究空间更大。** 内屏会在扫描器旁显示图鉴面板。
-- **English、简体中文和日本語。** 全151种宝可梦均有本地化名称、描述、属性和能力标签。可按名称、编号或属性搜索，并用已安装的系统语音朗读。
+- **English、简体中文和日本語。** 全1025种宝可梦均有本地化名称、描述、属性和能力标签。可按名称、编号或属性搜索，并用已安装的系统语音朗读。
 - **本地发现记录。** 关闭应用后，进度依然保留。研究经费依然只是想象。
 
 ## 选择语言
@@ -49,7 +61,18 @@ xcodebuild test -project iDex.xcodeproj -scheme iDex \
 
 ## 有大木博士那么准吗？
 
-大木博士暂未回应。模型认识最初的151种宝可梦，但仍可能把无关物体误认为宝可梦。分数不是经过校准的概率；低置信度结果不会自动计入发现记录，也不会自动朗读。真实相机的识别准确度与物理铰链行为仍需真机验证。
+大木博士暂未回应。模型认识全部1025种宝可梦，但仍可能把无关物体误认为宝可梦。分数不是经过校准的概率；低置信度结果不会自动计入发现记录，也不会自动朗读。真实相机的识别准确度与物理铰链行为仍需真机验证。
+
+**严格模式还是娱乐模式？** 训练出来的识别模型只有一个。设置 → 识别模式里的两种模式，区别只在于模型要多有把握，扫描才算「识别成功」（计入已发现并自动朗读）。不论哪种模式，扫描后都会显示最可能的结果。
+
+| | 严格模式（默认） | 娱乐模式（原版设置） |
+| --- | --- | --- |
+| 判定规则 | 温度 0.75 下得分 ≥ 95%，且第一、二名的原始分差 ≥ 3；在验证集上选定 | 得分 ≥ 25%，且分差 ≥ 0.5 |
+| 测试图中自动识别成功的比例 | 75.8% | 93.4% |
+| 其中认对的比例 | 99.7% | 97.4% |
+| 日常照片被误认成宝可梦的比例 | 3.1% | 40.6% |
+
+严格模式让图鉴记录更干净，但更常提示重新扫描；娱乐模式几乎对准什么都能「识别」出一只宝可梦，包括不是宝可梦的东西。以上数字来自训练时没用过的测试图（12,449 张宝可梦图片、64 张 COCO 日常照片），不是真实相机实测。
 
 ## 打开外壳看看
 
@@ -67,7 +90,7 @@ iDex 的原创应用源代码及配套脚本采用 [MIT 许可证](LICENSE)，�
 
 ## 感谢各位人类
 
-像素图：[Pokémon Database](https://pokemondb.net/sprites)。数据与叫声：[PokéAPI](https://github.com/PokeAPI/pokeapi)。模型：使用 [TorchVision](https://docs.pytorch.org/vision/stable/models/efficientnet.html) 本地训练的 EfficientNet-B0（FP32）。字体：Press Start 2P 和 Fusion Pixel（SIL OFL 1.1）。
+原版 App：[Zihang Huang](https://github.com/zihang-huang/iDex)。像素图：[Pokémon Database](https://pokemondb.net/sprites)，第 650 号起为 [Pokémon Showdown](https://play.pokemonshowdown.com/sprites/gen5/)。数据与叫声：[PokéAPI](https://github.com/PokeAPI/pokeapi)；缺失的中日文图鉴：[宝可梦官方网站](https://www.pokemon.cn/play/pokedex/)与[ポケモンずかん](https://zukan.pokemon.co.jp/)。训练图片：[PokeAPI sprites](https://github.com/PokeAPI/sprites)、[Pokémon TCG API](https://pokemontcg.io/)、三套 Hugging Face 数据集与 COCO 背景照片（见[模型声明](iDex/Recognition/MODEL_NOTICE.md)）。模型：使用 [TorchVision](https://docs.pytorch.org/vision/stable/models/efficientnet.html) 本地训练的 EfficientNet-B0（FP32）。字体：Press Start 2P 和 Fusion Pixel（SIL OFL 1.1）。
 
 [完整资源署名](iDex/Catalog/ATTRIBUTION.md) · [模型来源](iDex/Recognition/MODEL.md)
 

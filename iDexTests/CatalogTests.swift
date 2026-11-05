@@ -5,12 +5,15 @@ import CoreText
 
 @MainActor
 struct CatalogTests {
-    @Test func catalogIncludesAllOriginalKantoSpecies() {
+    @Test func catalogIncludesTheWholeNationalPokedex() {
         let entries = PokemonCatalog.shared.entries
-        #expect(entries.map(\.id) == Array(1...151))
-        #expect(Set(entries.map(\.englishName)).count == 151)
-        #expect(Set(entries.map(\.chineseName)).count == 151)
-        #expect(Set(entries.map(\.japaneseName)).count == 151)
+        #expect(entries.map(\.id) == Array(1...1025))
+        #expect(Set(entries.map(\.englishName)).count == 1025)
+        #expect(Set(entries.map(\.chineseName)).count == 1025)
+        #expect(Set(entries.map(\.japaneseName)).count == 1025)
+        #expect(entries.prefix(151).allSatisfy { $0.generation == 1 })
+        #expect(entries.last?.generation == 9)
+        #expect(zip(entries, entries.dropFirst()).allSatisfy { $0.generation <= $1.generation })
         #expect(entries.allSatisfy { !$0.englishDescription.isEmpty && !$0.chineseDescription.isEmpty })
         #expect(entries.allSatisfy { !$0.englishGenus.isEmpty && !$0.chineseGenus.isEmpty })
         #expect(entries.allSatisfy { !$0.japaneseDescription.isEmpty && !$0.japaneseGenus.isEmpty })
@@ -85,9 +88,10 @@ struct CatalogTests {
         #expect(catalog.search("pIkAcHu", language: .en).map(\.id) == [25])
         #expect(catalog.search("皮卡丘", language: .zhHans).map(\.id) == [25])
         #expect(catalog.search("皮卡丘", language: .en).map(\.id) == [25])
-        #expect(catalog.search("#025", language: .en).map(\.id) == [25])
-        #expect(catalog.search("  025 \n", language: .zhHans).map(\.id) == [25])
-        #expect(catalog.search("", language: .en).count == 151)
+        // Number search matches substrings, so "025" also finds No. 1025.
+        #expect(catalog.search("#025", language: .en).map(\.id) == [25, 1025])
+        #expect(catalog.search("  025 \n", language: .zhHans).map(\.id) == [25, 1025])
+        #expect(catalog.search("", language: .en).count == 1025)
         #expect(catalog.search("not a pokemon", language: .en).isEmpty)
     }
 
@@ -109,7 +113,45 @@ struct CatalogTests {
         #expect(pikachu.height == 0.4)
         #expect(pikachu.weight == 6.0)
         #expect(catalog.pokemon(id: 0) == nil)
-        #expect(catalog.pokemon(id: 152) == nil)
+        #expect(catalog.pokemon(id: 1026) == nil)
+    }
+
+    @Test func generationTitlesFollowEachSpecies() throws {
+        let catalog = PokemonCatalog.shared
+        let pikachu = try #require(catalog.pokemon(id: 25))
+        #expect(pikachu.generationTitle(in: .en) == "GEN. I")
+        #expect(pikachu.generationTitle(in: .zhHans) == "第一世代")
+        #expect(pikachu.generationTitle(in: .ja) == "第1世代")
+        let sprigatito = try #require(catalog.pokemon(id: 906))
+        #expect(sprigatito.generationTitle(in: .en) == "GEN. IX")
+        #expect(sprigatito.generationTitle(in: .zhHans) == "第九世代")
+        #expect(sprigatito.generationTitle(in: .ja) == "第9世代")
+    }
+
+    @Test func archiveSectionsGroupByGenerationAndCombineFilters() {
+        let catalog = PokemonCatalog.shared
+        #expect(catalog.generations == Array(1...9))
+        let all = catalog.sections(matching: "", language: .en)
+        #expect(all.map(\.generation) == Array(1...9))
+        #expect(all.map(\.entries.count) == [151, 100, 135, 107, 156, 72, 88, 96, 120])
+        #expect(all.flatMap(\.entries).map(\.id) == Array(1...1025))
+        let ninth = catalog.sections(matching: "", language: .en, generation: 9)
+        #expect(ninth.map(\.generation) == [9])
+        #expect(ninth.first?.entries.first?.id == 906)
+        #expect(catalog.sections(matching: "pikachu", language: .en, generation: 9).isEmpty)
+        #expect(catalog.sections(matching: "25", language: .en, generation: 1).flatMap(\.entries).map(\.id) == [25, 125])
+        let seen = catalog.sections(matching: "", language: .en, onlyIDs: [25, 906])
+        #expect(seen.map(\.generation) == [1, 9])
+        #expect(seen.flatMap(\.entries).map(\.id) == [25, 906])
+        #expect(Pokemon.generationTitle(9, in: .zhHans) == "第九世代")
+        #expect(Pokemon.romanNumeral(4) == "IV")
+    }
+
+    @Test func officialSiteTextFillsUpstreamGaps() throws {
+        // PokéAPI has no Japanese genus for Sprigatito; it comes from zukan.pokemon.co.jp.
+        let sprigatito = try #require(PokemonCatalog.shared.pokemon(id: 906))
+        #expect(sprigatito.japaneseGenus == "くさねこポケモン")
+        #expect(!sprigatito.japaneseDescription.contains("より）"))
     }
 
     @Test func searchFindsEverySpeciesByAnyLanguageNameOrNumberInDexOrder() {
@@ -124,7 +166,9 @@ struct CatalogTests {
             }
             #expect(catalog.search("saur", language: language).map(\.id) == [1, 2, 3])
             #expect(catalog.search("Nidoran", language: language).map(\.id) == [29, 32])
-            #expect(catalog.search("25", language: language).map(\.id) == [25, 125])
+            let numbered = catalog.entries.filter { $0.number.contains("25") }.map(\.id)
+            #expect(Array(numbered.prefix(2)) == [25, 125])
+            #expect(catalog.search("25", language: language).map(\.id) == numbered)
         }
     }
 

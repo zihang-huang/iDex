@@ -14,6 +14,10 @@ final class DexStore {
     var selected: Pokemon? {
         didSet { if let selected { UserDefaults.standard.set(selected.id, forKey: "idex.lastViewed") } }
     }
+    /// Applies to the next scan; results already on screen keep the tier they were judged with.
+    var recognitionThreshold: RecognitionThreshold {
+        didSet { UserDefaults.standard.set(recognitionThreshold.rawValue, forKey: "idex.recognitionThreshold") }
+    }
     var isScanning = false
     var message: String?
     var candidates: [RecognitionCandidate] = []
@@ -41,6 +45,8 @@ final class DexStore {
         self.audio = audio ?? .shared
         PixelFont.register()
         language = UserDefaults.standard.string(forKey: "idex.language").flatMap(AppLanguage.init(rawValue:)) ?? .systemDefault
+        recognitionThreshold = UserDefaults.standard.string(forKey: "idex.recognitionThreshold")
+            .flatMap(RecognitionThreshold.init(rawValue:)) ?? .standard
         selected = PokemonCatalog.shared.pokemon(id: UserDefaults.standard.integer(forKey: "idex.lastViewed")) ?? PokemonCatalog.shared.pokemon(id: 25)
         seenIDs = Set(UserDefaults.standard.array(forKey: "idex.seen") as? [Int] ?? [])
     }
@@ -161,7 +167,7 @@ final class DexStore {
         // work and must not impose its own minimum wait on a warm classifier.
         let interval = DexPerformance.begin("Recognition")
         defer { DexPerformance.end("Recognition", interval) }
-        let result = try await classifier.classify(image: image)
+        let result = try await classifier.classify(image: image, threshold: recognitionThreshold)
         guard operation == operationID, isActive, !Task.isCancelled else { return }
         finishScan(operation)
         try applyRecognition(result)
@@ -211,7 +217,8 @@ final class DexStore {
         audio.stopSpeaking()
         cancelScan()
         guard let selected else { return }
-        let id = ((selected.id - 1 + delta + 151) % 151) + 1
+        let count = PokemonCatalog.shared.entries.count
+        let id = ((selected.id - 1 + delta + count) % count) + 1
         self.selected = PokemonCatalog.shared.pokemon(id: id)
         confidence = nil
         identified = false
@@ -240,6 +247,11 @@ final class DexStore {
     func speak() {
         guard isActive, let selected else { return }
         audio.speak(selected.spokenEntry(in: language), languageCode: language.speechLocale)
+    }
+
+    func playCry() {
+        guard isActive, let selected else { return }
+        audio.playCry(selected)
     }
 
     private static func opaqueImage(_ image: CGImage) -> CGImage {

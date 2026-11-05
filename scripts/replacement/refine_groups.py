@@ -3,6 +3,8 @@
 Preserves first-pass manifest/lock. Refuses to alter data after training begins.
 This is source/label review, not model-driven tuning of a test set.
 """
+import argparse
+from labels import add_labels, read_labels
 import collections
 import concurrent.futures
 import hashlib
@@ -14,8 +16,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image,ImageOps
 from data import Groups,DCT
+from splitting import split_classes
 
-root=Path('artifacts/replacement'); dest=root/'data'
+parser=argparse.ArgumentParser(); add_labels(parser)
+parser.add_argument('--root',type=Path,default=Path('artifacts/replacement'))
+parser.add_argument('--min-groups',type=int,default=5); parser.add_argument('--seed',type=int,default=20261027)
+args=parser.parse_args(); labels=read_labels(args.labels)
+root=args.root; dest=root/'data'
 if any((root/'runs').rglob('*.pt')): raise SystemExit('Training exists: do not revise the split')
 if (dest/'manifest-v1.jsonl').exists(): raise SystemExit('Refinement already performed')
 rows=[json.loads(s) for s in (dest/'manifest.jsonl').read_text().splitlines()]
@@ -77,16 +84,10 @@ for key,indices in components.items():
     for i in indices:rows[i]['group']=gid
     target=rows[key]['target_id']
     if target:byclass[target].append(key)
-rng=random.Random(20261027);counts={}
-for target in range(1,152):
-    keys=sorted(byclass[target]);rng.shuffle(keys);counts[target]=len(keys)
-    if len(keys)<5:raise ValueError(f'Insufficient groups for {target}')
-    ntest=max(1,round(len(keys)*.15));nval=max(1,round(len(keys)*.15))
-    for j,key in enumerate(keys):
-        split='test_public' if j<ntest else 'val' if j<ntest+nval else 'train'
-        for i in components[key]:rows[i]['split']=split
+counts,insufficient=split_classes(rows,components,byclass,[l['id'] for l in labels],args.seed,args.min_groups)
+(dest/'insufficient_groups.json').write_text(json.dumps(insufficient,indent=2),encoding='utf-8')
 shutil.copy2(dest/'manifest.jsonl',dest/'manifest-v1.jsonl');shutil.copy2(dest/'split_lock.json',dest/'split_lock-v1.json')
 manifest=dest/'manifest.jsonl';manifest.write_text(''.join(json.dumps(r)+'\n' for r in rows),encoding='utf-8')
 summary=json.loads((dest/'split_lock-v1.json').read_text())
-summary.update(groups=len(components),class_groups=counts,effective_splits=dict(collections.Counter(r['split'] for r in rows if r['use'])),manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),refinement_seconds=time.time()-started,extra_group_merges=len(edges),revision=2,reason='Pre-training visual audit found black-padding/white-background and resize copies; added same-class foreground/mirror Hamming<=10 groups. No model predictions or tests informed revision.')
+summary.update(min_groups=args.min_groups,insufficient_groups=insufficient,labels=labels,groups=len(components),class_groups=counts,effective_splits=dict(collections.Counter(r['split'] for r in rows if r['use'])),manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),refinement_seconds=time.time()-started,extra_group_merges=len(edges),revision=2,reason='Pre-training visual audit found black-padding/white-background and resize copies; added same-class foreground/mirror Hamming<=10 groups. No model predictions or tests informed revision.')
 (dest/'foreground_edges.json').write_text(json.dumps(edges,indent=2));(dest/'split_lock.json').write_text(json.dumps(summary,indent=2));print(json.dumps(summary,indent=2),flush=True)

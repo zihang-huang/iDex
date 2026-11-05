@@ -1,0 +1,131 @@
+# Converts a trained PyTorch checkpoint to Core ML on a Mac runner (coremltools has no Windows
+# build) and checks Core ML logits against the PyTorch logits of the same checkpoint.
+# Push a throwaway `model-export` branch that commits the checkpoint at CHECKPOINT; download the
+# `national-classifier-export` artifact afterwards. The app resource is replaced in a later commit.
+name: Export model
+
+on:
+  push:
+    branches: [model-export]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      XCODE_APP: /Applications/Xcode_27.1.app
+      CHECKPOINT: scripts/replacement/release/national-best.pt
+      LABELS: scripts/replacement/labels-national.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode 27.1
+        run: sudo xcode-select -s "$XCODE_APP"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install the conversion stack
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r scripts/replacement/requirements-mac.txt
+          python -c "import torch, coremltools; print(torch.__version__, coremltools.__version__)"
+
+      - name: Check checkpoint
+        run: |
+          test -f "$CHECKPOINT" || { echo "::error::Missing $CHECKPOINT"; exit 1; }
+          shasum -a 256 "$CHECKPOINT"
+
+      - name: Build PyTorch reference fixtures
+        run: |
+          python scripts/replacement/ci_fixture_manifest.py --out artifacts/ci-fixture-source
+          python scripts/replacement/fixtures.py --checkpoint "$CHECKPOINT" --labels "$LABELS" \
+            --manifest artifacts/ci-fixture-source/manifest.jsonl --out artifacts/apple-fixtures
+
+      - name: Convert to Core ML
+        run: |
+          python scripts/replacement/export.py --checkpoint "$CHECKPOINT" --labels "$LABELS" \
+            --out artifacts/export --deployment iOS18
+          shasum -a 256 "$CHECKPOINT" > artifacts/export/source-checkpoint.sha256.txt
+
+      - name: Build parity checker
+        run: |
+          mkdir -p artifacts/apple-validation
+          xcrun swiftc -O -parse-as-library -target "$(uname -m)-apple-macosx13.0" \
+            scripts/replacement/apple/AppleValidationCore.swift \
+            scripts/replacement/apple/ValidateModels.swift \
+            -o artifacts/apple-validation/validate-models
+
+      # The same FP32 candidate fills both roles: this is a conversion gate, not a model comparison.
+      - name: Core ML parity (FP32, CPU only)
+        run: |
+          model=artifacts/export/NationalCandidate-fp32.mlpackage
+          artifacts/apple-validation/validate-models \
+            --baseline "$model" --candidate "$model" --labels "$LABELS" \
+            --manifest artifacts/apple-fixtures/manifest.json \
+            --output artifacts/export/parity-fp32-cpu.json \
+            --compute-units cpuOnly --atol .001 --rtol .0001 --require-references
+
+      - name: Core ML parity (FP32, all compute units, informational)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          model=artifacts/export/NationalCandidate-fp32.mlpackage
+          artifacts/apple-validation/validate-models \
+            --baseline "$model" --candidate "$model" --labels "$LABELS" \
+            --manifest artifacts/apple-fixtures/manifest.json \
+            --output artifacts/export/parity-fp32-all.json \
+            --compute-units all --atol .01 --rtol .001 --require-references
+
+      # Logs need a sign-in to read; annotations do not, so the outcome is also written there.
+      - name: Summarize
+        if: ${{ !cancelled() }}
+        run: |
+          python - <<'EOF'
+          import json, pathlib
+          root = pathlib.Path('artifacts/export')
+          receipt = root / 'export_receipt.json'
+          if receipt.exists():
+              r = json.loads(receipt.read_text())
+              print(f"::notice title=Export::torch {r['torch']} coremltools {r['coremltools']} "
+                    f"{r['deployment']} trace max error {max(r['trace_max_errors']):.2e}")
+          else:
+              print('::error title=Export::no export receipt')
+          for name in ('parity-fp32-cpu.json', 'parity-fp32-all.json'):
+              path = root / name
+              if not path.exists():
+                  print(f'::warning title={name}::missing'); continue
+              data = json.loads(path.read_text())
+              parity = [p['parity'] for m in data['modelReports'] for p in m['predictions'] if p.get('parity')]
+              worst = max((p['maxAbsoluteError'] for p in parity), default=float('nan'))
+              top1 = sum(not p['top1Matches'] for p in parity)
+              level = 'notice' if data['parityStatus'] == 'passed' else 'error'
+              print(f"::{level} title={name}::{data['parityStatus']}; compared {data['comparedPredictions']}, "
+                    f"missing {data['missingReferences']}, failed {data['parityFailures']}, "
+                    f"top-1 mismatches {top1}, worst abs error {worst:.2e}")
+          EOF
+
+      - name: Upload export
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: national-classifier-export
+          path: |
+            artifacts/export/NationalCandidate-fp32.mlpackage
+            artifacts/export/labels.json
+            artifacts/export/export_receipt.json
+            artifacts/export/source-checkpoint.sha256.txt
+            artifacts/export/parity-*.json
+          if-no-files-found: warn
+          retention-days: 14

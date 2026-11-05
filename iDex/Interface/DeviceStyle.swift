@@ -6,6 +6,8 @@ enum DexTheme {
     static let lcd = Color(red: 0.72, green: 0.81, blue: 0.58)
     static let cream = Color(red: 0.86, green: 0.86, blue: 0.77)
     static let charcoal = Color(red: 0.12, green: 0.14, blue: 0.15)
+    /// One step lighter than charcoal, so hardware buttons stay visible on charcoal sheets.
+    static let graphite = Color(red: 0.19, green: 0.21, blue: 0.22)
     static func pixel(_ size: CGFloat) -> Font { .custom("PressStart2P-Regular", size: size) }
 }
 
@@ -119,15 +121,27 @@ struct ScannerLights: View {
 
 struct HardwareButtonStyle: ButtonStyle {
     var color: Color = DexTheme.charcoal
+    var foreground: Color = DexTheme.cream
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(DexTheme.cream)
+            .foregroundStyle(foreground)
             .padding(.horizontal, 16).frame(minHeight: 44)
             .background(LinearGradient(colors: [color.opacity(0.85), color], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 8))
             .overlay { RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.17), lineWidth: 1).padding(1) }
             .overlay { RoundedRectangle(cornerRadius: 8).stroke(.black.opacity(0.6), lineWidth: 2) }
             .shadow(color: .black.opacity(0.6), radius: configuration.isPressed ? 0 : 1, x: 0, y: configuration.isPressed ? 1 : 4)
             .offset(y: configuration.isPressed ? 3 : 0)
+    }
+}
+
+/// The outlined type label used on LCD surfaces (record panel and archive list).
+struct TypeTag: View {
+    let name: String
+    let language: AppLanguage
+    var body: some View {
+        Text(name).font(PixelFont.font(size: language == .en ? 6 : 12, language: language))
+            .padding(.horizontal, 7).padding(.vertical, 5)
+            .overlay { RoundedRectangle(cornerRadius: 2).stroke(DexTheme.ink.opacity(0.6), lineWidth: 1) }
     }
 }
 

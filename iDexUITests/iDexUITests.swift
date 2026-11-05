@@ -129,7 +129,7 @@ final class iDexUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["こうげき"].exists)
         attachScreenshot("record-stats-ja", app: app)
 
-        openCatalog(in: app, title: "カントー図鑑")
+        openCatalog(in: app, title: "全国図鑑")
         let search = app.searchFields.firstMatch
         if !search.exists {
             let revealSearch = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "検索", "Search")).firstMatch
@@ -184,6 +184,36 @@ final class iDexUITests: XCTestCase {
         attachScreenshot("charizard-archive", app: app)
     }
 
+    func testGenerationFilterAndListLayout() throws {
+        let app = launchInEnglish()
+        openCatalog(in: app)
+        // Generation II's button is visible without scrolling the filter row on the cover display.
+        let second = app.buttons["generation-2"]
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+        second.tap()
+        XCTAssertTrue(app.buttons["pokemon-152"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["pokemon-1"].exists)
+        attachScreenshot("catalog-generation-ii-grid", app: app)
+        app.buttons["catalog-layout-list"].tap()
+        XCTAssertTrue(app.buttons["pokemon-152"].waitForExistence(timeout: 5))
+        attachScreenshot("catalog-generation-ii-list", app: app)
+        app.buttons["catalog-layout-grid"].tap()
+        app.buttons["generation-all"].tap()
+        XCTAssertTrue(app.buttons["pokemon-1"].waitForExistence(timeout: 5))
+    }
+
+    func testArchiveOpensAtTheViewedEntry() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-idex.language", "en", "-idex.soundEnabled", "NO", "-idex.lastViewed", "400"]
+        app.launch()
+        XCTAssertTrue(app.buttons["settings-button"].waitForExistence(timeout: 10))
+        openCatalog(in: app)
+        let viewed = app.buttons["pokemon-400"]
+        XCTAssertTrue(viewed.waitForExistence(timeout: 5))
+        XCTAssertTrue(viewed.isHittable)
+        attachScreenshot("catalog-opens-at-400", app: app)
+    }
+
     func testTurningPhoneDoesNotRotateScannerOrPresentations() throws {
         XCUIDevice.shared.orientation = .portrait
         defer { XCUIDevice.shared.orientation = .portrait }
@@ -221,7 +251,7 @@ final class iDexUITests: XCTestCase {
         attachScreenshot("orientation-locked-record", app: app)
 
         openCatalog(in: app)
-        assertPresentationDoesNotRotate("Kanto archive", app: app, appFrame: appFrame)
+        assertPresentationDoesNotRotate("National archive", app: app, appFrame: appFrame)
         app.buttons["settings-done"].tap()
         if !expanded { app.buttons["close-record"].tap() }
 
@@ -275,7 +305,7 @@ final class iDexUITests: XCTestCase {
         return app
     }
 
-    private func openCatalog(in app: XCUIApplication, title: String = "Kanto archive") {
+    private func openCatalog(in app: XCUIApplication, title: String = "National archive") {
         let catalog = app.buttons["catalog-button"]
         if !catalog.isHittable {
             app.buttons["record-button"].tap()

@@ -41,9 +41,7 @@ struct EntryPanel: View {
                                 Text(pokemon.genus(in: store.language)).font(.system(size: 12, design: .monospaced))
                                 HStack(spacing: 4) {
                                     ForEach(pokemon.typeNames(in: store.language), id: \.self) { type in
-                                        Text(type).font(PixelFont.font(size: store.language == .en ? 6 : 12, language: store.language))
-                                            .padding(.horizontal, 7).padding(.vertical, 5)
-                                            .overlay { RoundedRectangle(cornerRadius: 2).stroke(DexTheme.ink.opacity(0.6), lineWidth: 1) }
+                                        TypeTag(name: type, language: store.language)
                                     }
                                 }
                             }
@@ -95,6 +93,9 @@ struct EntryPanel: View {
                     Button { store.step(1) } label: { Image(systemName: "arrowtriangle.right.fill").frame(width: 17) }
                         .accessibilityLabel(store.text("Next Pokémon", "下一个宝可梦", "次のポケモン"))
                     Spacer(minLength: 0)
+                    Button { store.playCry() } label: { Image(systemName: "waveform").frame(width: 17) }
+                        .accessibilityLabel(store.text("Play cry", "播放叫声", "なきごえを再生"))
+                        .accessibilityIdentifier("cry-button")
                     Button { store.speak() } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "speaker.wave.2.fill")
@@ -108,11 +109,12 @@ struct EntryPanel: View {
                     Button { store.showingCatalog = true; store.audio.play(.button) } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "square.grid.2x2.fill")
-                            Text(store.text("BROWSE 151", "浏览151种", "全151種を見る")).font(PixelFont.font(size: store.language == .en ? 8 : 14, language: store.language))
+                            let total = PokemonCatalog.shared.entries.count
+                            Text(store.text("BROWSE \(total)", "浏览\(total)种", "全\(total)種を見る")).font(PixelFont.font(size: store.language == .en ? 8 : 14, language: store.language))
                         }
                     }.buttonStyle(.plain).foregroundStyle(DexTheme.cream).accessibilityIdentifier("catalog-button")
                     Spacer()
-                    Text(store.confidence.map { "\(Int($0 * 100))%" } ?? store.text("GEN. I", "第一世代", "第1世代"))
+                    Text(store.confidence.map { "\(Int($0 * 100))%" } ?? pokemon.generationTitle(in: store.language))
                         .font(DexTheme.pixel(7)).foregroundStyle(.white.opacity(0.5))
                     if let onClose {
                         Button(action: onClose) {

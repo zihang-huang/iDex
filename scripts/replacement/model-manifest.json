@@ -1,11 +1,12 @@
 {
-  "source_checkpoint_sha256": "b24cf5301ad97bd1f1f721bffa3c40ec0242bf1efac68435a3752850f624fa6f",
-  "graph_sha256": "71f9a424c355484cc6df79e197e912547b2b3d2f63c39d3d5d01b6bb43e3939d",
-  "weights_sha256": "732f3b550cb44c7927d0914086df7b1237371a7d9a902942fd03ab5274d92756",
-  "model_spec_sha256": "c084e36a3006f6a2e33d50b0c95dff33c9a828ad0458be610006c72a554a37f2",
-  "labels_sha256": "13bd2345fa10f8a7d04363772bb6ef7871c0a6c0635d8c907a77e6cb93f78725",
-  "program_and_weights_equal_verified_phone_fp32": true,
-  "model_bytes": 16854510,
+  "package": "iDex/Recognition/NationalClassifier.mlpackage",
+  "class_count": 1025,
+  "source_checkpoint_sha256": "2022deef65a694f9ce51701832c9793574dbc4c62bf6ffd6258725d22a32b5fe",
+  "weights_sha256": "d86a078716426ec852f5eac740f3a1397e08144591eaa3cfd6a49e5013a9954f",
+  "model_spec_sha256": "d0f2fe5029a60b5932c796796ed7b4d13e04bf346055428a54060798df803472",
+  "labels_sha256": "8997df2be5630e1af2f5e77019dbda51170732cb5c205e94828a17cb1cb9faa1",
+  "labels_source": "scripts/replacement/labels-national.json",
+  "model_bytes": 21332447,
   "selected_architecture": "efficientnet_b0",
   "precision": "float32",
   "input": [
@@ -16,13 +17,46 @@
   ],
   "compute_units_device": "all",
   "compute_units_simulator": "cpuOnly",
-  "ordinary_softmax_temperature": 1,
-  "confidence_threshold": 0.25,
-  "logit_margin_threshold": 0.5,
-  "independent_camera_superiority_established": false,
+  "recognition_thresholds": {
+    "strict": {
+      "default": true,
+      "softmax_temperature": 0.75,
+      "confidence_threshold": 0.95,
+      "logit_margin_threshold": 3,
+      "origin": "chosen on the validation split (selection.json)"
+    },
+    "relaxed": {
+      "default": false,
+      "softmax_temperature": 1,
+      "confidence_threshold": 0.25,
+      "logit_margin_threshold": 0.5,
+      "origin": "original iDex heuristic"
+    }
+  },
+  "export": {
+    "torch": "2.14.1",
+    "coremltools": "9.0",
+    "deployment": "iOS18",
+    "trace_max_error": 0.0,
+    "ci_run": "rom0718/iDex actions run 41946529839"
+  },
+  "mac_parity": {
+    "fixtures": 258,
+    "missing": 0,
+    "failed": 0,
+    "top1_mismatches": 0,
+    "worst_abs_error": 6.2e-05,
+    "compute_units": [
+      "all",
+      "cpuOnly"
+    ],
+    "os": "macOS 27.0.1"
+  },
+  "physical_device_parity_verified": false,
+  "independent_camera_accuracy_established": false,
   "architecture_implementation": "torchvision.models.efficientnet_b0",
   "initialization_weights_sha256": "7f5810bc96def8f7552d5b7e68d53c4786f81167d28291b21c0d90e1fca14934",
-  "training_manifest_sha256": "94fef4bc7a8f6195c9b45515d05578387bd31608ed05950f444762687c1144d7",
+  "training_manifest_sha256": "a6ce4a0fb819b273d8a1593acc37bc90710f762949665088a63c34e06e612d82",
   "git_storage": "regular Git blobs; no LFS required",
   "model_notice": "iDex/Recognition/MODEL_NOTICE.md"
 }

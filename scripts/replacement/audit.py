@@ -1,18 +1,23 @@
 """Render auditable training examples and duplicate conflict sheets (no inference)."""
+import argparse
+from labels import add_labels, read_labels
 import collections
 import json
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageOps
 
-root=Path('artifacts/replacement'); out=root/'reports/audit';out.mkdir(parents=True,exist_ok=True)
+parser=argparse.ArgumentParser(); add_labels(parser)
+parser.add_argument('--root',type=Path,default=Path('artifacts/replacement'))
+args=parser.parse_args(); labels=read_labels(args.labels)
+root=args.root; out=root/'reports/audit';out.mkdir(parents=True,exist_ok=True)
 rows=[json.loads(s) for s in (root/'data/manifest.jsonl').read_text().splitlines()]
-labels=json.loads(Path('iDex/Recognition/pokemon_labels.json').read_text())
+labels=read_labels(args.labels)
 items=[]
 for label in labels:
     choices=[r for r in rows if r['target_id']==label['id'] and r['use'] and r['split']=='train']
     # One representative per source where available; no model/test-based choices.
     chosen=[]
-    for source in ['sgtsaughter','keremberke','JJMack']:
+    for source in ['sgtsaughter','keremberke','JJMack','sprites','tcg']:
         available=[r for r in choices if r['source']==source]
         if available: chosen.append(available[len(available)//2])
     for r in chosen: items.append((r,f"{label['id']} {label['name']} {r['source']}"))

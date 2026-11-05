@@ -71,9 +71,9 @@ struct ValidateModels {
             }
             let baseline = try required("--baseline")
             let candidate = try required("--candidate")
-            let labels = try AppleValidation.labels(at: required("--labels"))
+            let labels = try AppleValidation.labels(at: URL(fileURLWithPath: options["--labels"] ?? "iDex/Recognition/pokemon_labels.json"))
             let manifestURL = try required("--manifest")
-            let manifest = try AppleValidation.manifest(at: manifestURL)
+            let manifest = try AppleValidation.manifest(at: manifestURL, labels: labels)
             let directory = manifestURL.deletingLastPathComponent()
             let output = try required("--output")
             let dumpDirectory = options["--dump-inputs"].map { URL(fileURLWithPath: $0) }
@@ -90,7 +90,7 @@ struct ValidateModels {
             var reports: [ModelReport] = []
             for (role, url) in [("baseline", baseline), ("candidate", candidate)] {
                 let report = try autoreleasepool { () throws -> ModelReport in
-                    let session = try ValidationModelSession(url: url, computeUnits: computeUnits)
+                    let session = try ValidationModelSession(url: url, computeUnits: computeUnits, classCount: labels.count)
                     var predictions: [ValidationPrediction] = []
                     for (fixtureIndex, fixture) in manifest.fixtures.enumerated() {
                         let prediction = try autoreleasepool { () throws -> ValidationPrediction in

@@ -74,6 +74,13 @@ def test_labels_infer_count_and_default(path,count):
     assert len(read_labels(parser.parse_args(['--labels',str(path)]).labels))==count
 
 
+def test_app_labels_match_the_national_model_and_kanto_labels_stay_frozen():
+    # The app's logit order must equal the label file the bundled national model was trained on.
+    assert read_labels(HERE.parents[1]/'iDex/Recognition/pokemon_labels.json')==read_labels(NATIONAL)
+    # Normalize line endings so a Windows autocrlf checkout hashes the committed bytes.
+    assert hashlib.sha256(Path(LABELS).read_bytes().replace(b'\r\n',b'\n')).hexdigest()=='13bd2345fa10f8a7d04363772bb6ef7871c0a6c0635d8c907a77e6cb93f78725'
+
+
 def test_national_csv_prefix_and_generated_file_match():
     original=read_labels()
     csv='id,identifier\n'+''.join(f'{r["id"]},{r["name"]}\n' for r in read_labels(NATIONAL))

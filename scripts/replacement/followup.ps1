@@ -1,4 +1,4 @@
-param([string] $Labels = 'iDex/Recognition/pokemon_labels.json')
+param([string] $Labels = 'scripts/replacement/labels-kanto.json')
 $ErrorActionPreference = 'Stop'
 $pythonPath = if ($env:IDEX_TRAIN_PYTHON) { $env:IDEX_TRAIN_PYTHON } else { 'python' }
 function Invoke-Stage([string[]] $StageArguments) {

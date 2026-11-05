@@ -55,7 +55,7 @@ enum RecognitionError: LocalizedError {
 /// Serializes model loading and inference away from the UI actor. No image leaves the device.
 actor PokemonClassifier {
     /// Bundled Core ML model; its logits follow `pokemon_labels.json` order.
-    static let modelName = "KantoClassifier"
+    static let modelName = "NationalClassifier"
 
     private var model: MLModel?
     private var labels: [Label] = []

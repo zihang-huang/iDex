@@ -8,13 +8,14 @@ These first-party scripts retain the bounded data/training/export workflow. Raw 
 
 ### National Dex (1025 classes)
 
-Every label-aware Python entry point accepts `--labels`; its default remains
-`iDex/Recognition/pokemon_labels.json` (151 classes). The file defines both count
-and logit order, including reversed ID order. Checkpoints embed the full list and
-loaders/continuation/resume/selection reject mismatches. `make_labels.py` uses the
-local PokéAPI CSV cache or downloads the same CSV used by the catalog builder;
-it refuses any difference in the shipped first 151 records. Do not replace the
-app's labels before the matching model is integrated.
+Every label-aware Python entry point accepts `--labels`; its default is
+`scripts/replacement/labels-kanto.json` (151 classes), the historical campaign's
+labels frozen byte-for-byte when the app switched to the national model. The app's
+`iDex/Recognition/pokemon_labels.json` is now identical to `labels-national.json`.
+A label file defines both count and logit order, including reversed ID order.
+Checkpoints embed the full list and loaders/continuation/resume/selection reject
+mismatches. `make_labels.py` uses the local PokéAPI CSV cache or downloads the same
+CSV used by the catalog builder; it refuses any difference in the first 151 records.
 
 Run these commands from the repository root, in the existing isolated environment.
 They are the full acquisition/training sequence, **not commands run by the offline

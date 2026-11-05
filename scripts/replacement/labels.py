@@ -2,7 +2,9 @@
 import json
 from pathlib import Path
 
-LABELS = Path('iDex/Recognition/pokemon_labels.json')
+# The historical 151-class campaign contract, frozen byte-for-byte when the app moved to the
+# National Pokédex; the app's own iDex/Recognition/pokemon_labels.json now matches its model.
+LABELS = Path('scripts/replacement/labels-kanto.json')
 CATALOG = Path('iDex/Resources/pokemon-national.json')
 
 

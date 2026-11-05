@@ -20,10 +20,10 @@ No wild Pokémon were inconvenienced.
 
 ## What's in the bag?
 
-- **151 Kanto Pokémon.** Pixel sprites, stats, field notes, and cries.
+- **All 1,025 Pokémon of the National Pokédex.** Pixel sprites, stats, field notes, and cries, with a searchable archive by generation.
 - **Scan a photo or use the camera.** Recognition runs on your iPhone; photos stay in memory.
 - **Unfold for more room.** The archive sits beside the scanner on the inner display.
-- **English, 简体中文, and 日本語.** All 151 entries include localized names, descriptions, types, and stats. Search by name, number, or type; listen using installed system voices.
+- **English, 简体中文, and 日本語.** All 1,025 entries include localized names, descriptions, types, and stats. Search by name, number, or type; listen using installed system voices.
 - **A local discovery log.** Your progress survives closing the app. Your research grant remains imaginary.
 
 ## Choose your language
@@ -49,7 +49,7 @@ xcodebuild test -project iDex.xcodeproj -scheme iDex \
 
 ## Is it Professor Oak accurate?
 
-Professor Oak has declined to comment. The model knows the original 151 species and can still mistake unrelated objects for Pokémon. Scores aren't calibrated probabilities; low-confidence guesses don't automatically become discoveries or trigger narration. Real camera accuracy and physical hinge behavior still need device testing.
+Professor Oak has declined to comment. The model knows all 1,025 species and can still mistake unrelated objects for Pokémon; Settings offers a Strict (default) and a Relaxed recognition threshold. Scores aren't calibrated probabilities; low-confidence guesses don't automatically become discoveries or trigger narration. Real camera accuracy and physical hinge behavior still need device testing.
 
 ## Under the hood
 

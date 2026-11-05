@@ -114,30 +114,33 @@ struct RecognitionTests {
         #expect(store.scannedPokemon?.id == 25)
     }
 
-    @Test("Core ML identifies opaque sprites including previously rejected matches", arguments: [25, 6, 65, 83, 86, 98, 129])
-    func identifiesKnownPokemon(dexID: Int) async throws {
+    // The first seven were once rejected by the Kanto model; the rest span generations II–IX.
+    @Test("Core ML identifies opaque sprites under both thresholds",
+          arguments: [25, 6, 65, 83, 86, 98, 129, 152, 387, 494, 650, 722, 810, 906, 1025], RecognitionThreshold.allCases)
+    func identifiesKnownPokemon(dexID: Int, threshold: RecognitionThreshold) async throws {
         let sprite = try #require(UIImage(named: String(format: "pokemon-%03d", dexID)))
         let image = try #require(renderOpaque(sprite: sprite))
         let classifier = PokemonClassifier()
 
-        let result = try await classifier.classify(image: image, threshold: .relaxed)
+        let result = try await classifier.classify(image: image, threshold: threshold)
 
         let accepted = try #require(result.accepted)
         #expect(accepted.dexID == dexID)
         #expect(result.candidates.first?.dexID == dexID)
         #expect(result.candidates.count == 3)
-        #expect(accepted.confidence >= 0.25)
-        #expect(result.logitMargin >= 0.5)
+        #expect(accepted.confidence >= threshold.minimumConfidence)
+        #expect(result.logitMargin >= threshold.minimumLogitMargin)
     }
 
-    @Test("Blank images still offer a best match without confirming a discovery", arguments: [false, true])
-    func rejectsBlankImages(black: Bool) async throws {
+    @Test("Blank images still offer a best match without confirming a discovery",
+          arguments: [false, true], RecognitionThreshold.allCases)
+    func rejectsBlankImages(black: Bool, threshold: RecognitionThreshold) async throws {
         let image = try #require(renderOpaque(sprite: nil, background: black ? .black : .white))
-        let result = try await PokemonClassifier().classify(image: image, threshold: .relaxed)
+        let result = try await PokemonClassifier().classify(image: image, threshold: threshold)
 
         #expect(result.accepted == nil)
         #expect(result.candidates.count == 3)
-        #expect(result.candidates.allSatisfy { (1...151).contains($0.dexID) })
+        #expect(result.candidates.allSatisfy { (1...1025).contains($0.dexID) })
         #expect(result.candidates.allSatisfy { $0.confidence.isFinite && (0...1).contains($0.confidence) })
 
         let soundWasEnabled = DeviceAudio.shared.isSoundEnabled
@@ -223,13 +226,14 @@ struct RecognitionTests {
         let url = try #require(Bundle.main.url(forResource: "pokemon_labels", withExtension: "json"))
         let labels = try JSONDecoder().decode([Label].self, from: Data(contentsOf: url))
 
-        // The bundled model still covers the original 151; the catalog covers the National Pokédex.
-        #expect(labels.count == 151)
-        #expect(Set(labels.map(\.id)).isSubset(of: Set(PokemonCatalog.shared.entries.map(\.id))))
+        // The bundled model and the catalog both cover the full National Pokédex.
+        #expect(labels.count == 1025)
+        #expect(labels.map(\.id) == PokemonCatalog.shared.entries.map(\.id))
         #expect(labels.enumerated().allSatisfy { $0.element.id == $0.offset + 1 })
         #expect(labels.allSatisfy { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         #expect(labels[24].name == "pikachu")
         #expect(labels[5].name == "charizard")
+        #expect(labels[1024].name == "pecharunt")
     }
 
     // Match the app's sample path: a 96px transparent sprite becomes an opaque

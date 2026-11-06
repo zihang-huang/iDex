@@ -2,7 +2,7 @@
 
 [← Back to the README](../README.md)
 
-A native pocket Pokédex for iPhone Duo, available in English, Simplified Chinese, and Japanese. Built with SwiftUI, AVFoundation, Core ML, and local speech synthesis. An unofficial fan project.
+A native pocket Pokédex for iPhone Duo, available in English, Simplified Chinese, Traditional Chinese, and Japanese. Built with SwiftUI, AVFoundation, Core ML, and local speech synthesis. An unofficial fan project.
 
 ## Run
 
@@ -18,7 +18,7 @@ Unfolding reveals the archive on the left. The viewfinder uses a fixed 466-point
 
 Scan results stay in the viewfinder on both displays, keeping **Rescan** accessible. **Open record** shows the entry in a dismissible full-screen record while closed and gives access to the archive. Opening the device dismisses that compact record so the inside becomes visible. Search in any supported language by name, dex number, or localized type. Browse records with the arrow buttons, switch field notes to base stats, and use Read/Stop for narration.
 
-Settings offers English / 简体中文 / 日本語 and a sound toggle. Japanese includes names, genera, and descriptions for all 151 species, localized types and stats, and `ja-JP` narration. The catalog rebuild uses PokéAPI Japanese language ID 11 (kanji text); names are searchable across all three languages, while type search follows the selected language. Names, types, notes, controls, camera privacy text, pixel fonts, and speech use the selected language. The first launch follows the system language. Language, sound, last-viewed species, and discovered species IDs persist locally. Photos remain in memory, are released when their scan result appears, and are never uploaded or written to an app photo archive. System speech uses installed voices; a desired voice may need to be installed in iOS Settings for offline speech.
+Settings offers English / 简体中文 / 繁體中文 / 日本語 and a sound toggle. Japanese includes names, genera, and descriptions for all 151 species, localized types and stats, and `ja-JP` narration. The catalog rebuild uses PokéAPI Japanese language ID 11 (kanji text). Traditional Chinese uses PokéAPI language ID 4 (`zh-Hant`) for names, genera, and descriptions, Taiwan-usage interface copy, and `zh-TW` narration; `zh-Hant`, `zh-TW`, `zh-HK`, and `zh-MO` system preferences select it. Names are searchable across all four languages, while type search follows the selected language. Names, types, notes, controls, camera privacy text, pixel fonts, and speech use the selected language. The first launch follows the system language. Language, sound, last-viewed species, and discovered species IDs persist locally. Photos remain in memory, are released when their scan result appears, and are never uploaded or written to an app photo archive. System speech uses installed voices; a desired voice may need to be installed in iOS Settings for offline speech.
 
 ## Recognition scope
 
@@ -41,7 +41,7 @@ xcodebuild test -project iDex.xcodeproj -scheme iDex \
   -destination 'platform=iOS Simulator,name=iPhone Duo'
 ```
 
-The tests exercise real bundled-model inference, the selected FP32 model contract and known-image rankings, and blank-image best guesses without automatic discovery, catalog completeness, every sprite, all three font faces, English, Chinese, and Japanese search and prompts, layout continuity, language persistence, discovery display, and archive selection. The UI tests explicitly mute audio to keep automated runs quiet.
+The tests exercise real bundled-model inference, the selected FP32 model contract and known-image rankings, and blank-image best guesses without automatic discovery, catalog completeness, every sprite, all four font faces, English, Simplified Chinese, Traditional Chinese, and Japanese search and prompts, layout continuity, language persistence, discovery display, and archive selection. The UI tests explicitly mute audio to keep automated runs quiet.
 
 `ContentView.swift` contains named SwiftUI previews at the Duo cover and expanded dimensions. The physical camera and an actual fold transition still require device testing; rendered expanded previews and geometry tests do not prove physical continuity.
 
@@ -58,7 +58,7 @@ xcrun simctl io booted screenshot --display=1 /tmp/idex-cover.png
 - [Pokémon Database sprites](https://pokemondb.net/sprites): all 151 Black/White pixel sprites bundled offline.
 - [PokéAPI](https://github.com/PokeAPI/pokeapi): species names, localized flavor text, dimensions, types, and stats.
 - [PokéAPI cries](https://github.com/PokeAPI/cries): all 151 species' latest cries, pinned and converted to mono PCM WAV for offline playback. Regenerate with `python3 scripts/audio/build_cries.py` (development requires `ffmpeg`).
-- Press Start 2P and Fusion Pixel: bundled Latin, Simplified Chinese, and Japanese pixel fonts under SIL OFL 1.1, with license files.
+- Press Start 2P and Fusion Pixel: bundled Latin, Simplified Chinese, Traditional Chinese, and Japanese pixel fonts under SIL OFL 1.1, with license files.
 - Locally trained EfficientNet-B0 FP32 is the user-selected default. Its exact checkpoint, parity results, public-data limits and rollback are in [MODEL.md](../iDex/Recognition/MODEL.md).
 - Physical-device inspiration: [Stuff's DIY Pokédex article](https://stuff.co.za/2026/04/15/the-pokedex-is-real-and-fully-functional-but-youd-have-to-build-your-own/) and [Pokebattler's Pokédex reference](https://articles.pokebattler.com/2018/08/30/pogo-pokedex-by-the-numbers/).
 

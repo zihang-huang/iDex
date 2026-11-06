@@ -11,9 +11,11 @@ struct CatalogTests {
         #expect(Set(entries.map(\.englishName)).count == 151)
         #expect(Set(entries.map(\.chineseName)).count == 151)
         #expect(Set(entries.map(\.japaneseName)).count == 151)
+        #expect(Set(entries.map(\.traditionalChineseName)).count == 151)
         #expect(entries.allSatisfy { !$0.englishDescription.isEmpty && !$0.chineseDescription.isEmpty })
         #expect(entries.allSatisfy { !$0.englishGenus.isEmpty && !$0.chineseGenus.isEmpty })
         #expect(entries.allSatisfy { !$0.japaneseDescription.isEmpty && !$0.japaneseGenus.isEmpty })
+        #expect(entries.allSatisfy { !$0.traditionalChineseDescription.isEmpty && !$0.traditionalChineseGenus.isEmpty })
         #expect(entries.allSatisfy { $0.height > 0 && $0.weight > 0 })
         #expect(entries.allSatisfy { $0.stats.count == 6 && $0.stats.allSatisfy { $0.value > 0 } })
         #expect(entries.allSatisfy { (1...2).contains($0.types.count) })
@@ -29,7 +31,7 @@ struct CatalogTests {
 
     @Test func allPixelFontsRegisterFromBundledFiles() {
         PixelFont.register()
-        for fontName in [PixelFont.latinName, PixelFont.chineseName, PixelFont.japaneseName] {
+        for fontName in [PixelFont.latinName, PixelFont.chineseName, PixelFont.japaneseName, PixelFont.traditionalChineseName] {
             let font = CTFontCreateWithName(fontName as CFString, 12, nil)
             #expect(CTFontCopyPostScriptName(font) as String == fontName)
         }
@@ -47,6 +49,53 @@ struct CatalogTests {
         }
     }
 
+    @Test func traditionalChineseFontCoversCatalogText() {
+        PixelFont.register()
+        let font = CTFontCreateWithName(PixelFont.traditionalChineseName as CFString, 17, nil)
+        for pokemon in PokemonCatalog.shared.entries {
+            let text = pokemon.traditionalChineseName + pokemon.traditionalChineseGenus + pokemon.traditionalChineseDescription
+            let characters = Array(text.utf16)
+            var glyphs = [CGGlyph](repeating: 0, count: characters.count)
+            #expect(CTFontGetGlyphsForCharacters(font, characters, &glyphs, characters.count),
+                    "Missing Traditional Chinese glyph for \(pokemon.englishName)")
+        }
+    }
+
+    @Test func traditionalChineseResolvesFromScriptOrRegion() {
+        #expect(AppLanguage.preferred(in: ["zh-Hant-TW", "en-US"]) == .zhHant)
+        #expect(AppLanguage.preferred(in: ["zh-TW"]) == .zhHant)
+        #expect(AppLanguage.preferred(in: ["zh-HK"]) == .zhHant)
+        #expect(AppLanguage.preferred(in: ["zh-Hant"]) == .zhHant)
+        #expect(AppLanguage.preferred(in: ["zh-Hans-TW"]) == .zhHans)
+        #expect(AppLanguage.preferred(in: ["zh-CN"]) == .zhHans)
+        #expect(AppLanguage.preferred(in: ["zh"]) == .zhHans)
+        #expect(AppLanguage.zhHant.title == "繁體中文")
+        #expect(AppLanguage.zhHant.localeIdentifier == "zh-Hant")
+        #expect(AppLanguage.zhHant.speechLocale == "zh-TW")
+        #expect(AppLanguage.zhHant.text("Scan", "扫描", "スキャン", "掃描") == "掃描")
+    }
+
+    @Test func traditionalChineseEntriesTypesStatsAndNarrationUseTraditionalChinese() throws {
+        let catalog = PokemonCatalog.shared
+        let pikachu = try #require(catalog.pokemon(id: 25))
+        #expect(pikachu.name(in: .zhHant) == "皮卡丘")
+        #expect(pikachu.genus(in: .zhHant) == "鼠寶可夢")
+        #expect(pikachu.description(in: .zhHant) == pikachu.traditionalChineseDescription)
+        #expect(pikachu.typeNames(in: .zhHant) == ["電"])
+        #expect(pikachu.stats.map { $0.title(in: .zhHant) } == ["HP", "攻擊", "防禦", "特攻", "特防", "速度"])
+        #expect(pikachu.spokenEntry(in: .zhHant).hasPrefix("皮卡丘。全國圖鑑編號25。鼠寶可夢。屬性，電。"))
+        #expect(pikachu.spokenEntry(in: .zhHant).hasSuffix(pikachu.traditionalChineseDescription))
+        let charizard = try #require(catalog.pokemon(id: 6))
+        #expect(charizard.name(in: .zhHant) == "噴火龍")
+        #expect(charizard.typeNames(in: .zhHant) == ["火", "飛行"])
+        #expect(catalog.search("噴火龍", language: .en).map(\.id) == [6])
+        let bugs = catalog.search("蟲", language: .zhHant)
+        #expect(bugs.contains { $0.id == 10 })
+        for type in Set(catalog.entries.flatMap(\.types)) {
+            #expect(Pokemon.typeName(type, in: .zhHant) != type)
+        }
+    }
+
     @Test func languageSelectionResolvesSupportedSystemPreferences() {
         #expect(AppLanguage.preferred(in: ["ja-JP", "en-US"]) == .ja)
         #expect(AppLanguage.preferred(in: ["ja"]) == .ja)
@@ -58,7 +107,7 @@ struct CatalogTests {
         #expect(AppLanguage.ja.title == "日本語")
         #expect(AppLanguage.ja.localeIdentifier == "ja")
         #expect(AppLanguage.ja.speechLocale == "ja-JP")
-        #expect(AppLanguage.ja.text("Scan", "扫描", "スキャン") == "スキャン")
+        #expect(AppLanguage.ja.text("Scan", "扫描", "スキャン", "掃描") == "スキャン")
     }
 
     @Test func japaneseEntriesTypesStatsAndNarrationUseJapanese() throws {
@@ -116,7 +165,8 @@ struct CatalogTests {
         let catalog = PokemonCatalog.shared
         for language in AppLanguage.allCases {
             for pokemon in catalog.entries {
-                for query in [pokemon.englishName, pokemon.chineseName, pokemon.japaneseName, pokemon.number] {
+                for query in [pokemon.englishName, pokemon.chineseName, pokemon.japaneseName,
+                              pokemon.traditionalChineseName, pokemon.number] {
                     let ids = catalog.search(query, language: language).map(\.id)
                     #expect(ids.contains(pokemon.id))
                     #expect(ids == ids.sorted())
@@ -129,7 +179,7 @@ struct CatalogTests {
     }
 
     @Test func systemCameraPromptHasAllTranslations() throws {
-        for (locale, expectedWord) in [("en", "camera"), ("zh-Hans", "相机"), ("ja", "カメラ")] {
+        for (locale, expectedWord) in [("en", "camera"), ("zh-Hans", "相机"), ("ja", "カメラ"), ("zh-Hant", "相機")] {
             let path = try #require(Bundle.main.path(forResource: locale, ofType: "lproj"))
             let localizedBundle = try #require(Bundle(path: path))
             let text = localizedBundle.localizedString(forKey: "NSCameraUsageDescription", value: nil, table: "InfoPlist")

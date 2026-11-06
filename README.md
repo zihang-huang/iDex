@@ -1,4 +1,4 @@
-[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
 ![iDex — Gotta scan ’em all.](docs/images/banner.png)
 
@@ -6,7 +6,7 @@
 
 A pocket Pokédex for iPhone Duo. Point, scan, and pretend Professor Oak gave you a research grant.
 
-Native SwiftUI · English / 简体中文 / 日本語 · On-device Core ML
+Native SwiftUI · English / 简体中文 / 繁體中文 / 日本語 · On-device Core ML
 
 ## A little field trip
 
@@ -23,12 +23,12 @@ No wild Pokémon were inconvenienced.
 - **151 Kanto Pokémon.** Pixel sprites, stats, field notes, and cries.
 - **Scan a photo or use the camera.** Recognition runs on your iPhone; photos stay in memory.
 - **Unfold for more room.** The archive sits beside the scanner on the inner display.
-- **English, 简体中文, and 日本語.** All 151 entries include localized names, descriptions, types, and stats. Search by name, number, or type; listen using installed system voices.
+- **English, 简体中文, 繁體中文, and 日本語.** All 151 entries include localized names, descriptions, types, and stats. Search by name, number, or type; listen using installed system voices.
 - **A local discovery log.** Your progress survives closing the app. Your research grant remains imaginary.
 
 ## Choose your language
 
-Open **Settings → Language** and choose **English**, **简体中文**, or **日本語**. The first launch follows your preferred supported system language, and your selection is saved. Controls, accessibility labels, Pokédex entries, and narration follow the selected language. Names are searchable in all three languages; type search uses the selected language. Narration uses installed iOS voices.
+Open **Settings → Language** and choose **English**, **简体中文**, **繁體中文**, or **日本語**. The first launch follows your preferred supported system language, and your selection is saved. Controls, accessibility labels, Pokédex entries, and narration follow the selected language. Names are searchable in all four languages; type search uses the selected language. Narration uses installed iOS voices.
 
 ## Take it for a spin
 

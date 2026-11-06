@@ -1,4 +1,4 @@
-[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
 ![iDex — 把它们都扫描一遍！](docs/images/banner.png)
 
@@ -6,7 +6,7 @@
 
 为 iPhone Duo 打造的口袋宝可梦图鉴。对准、扫描，假装大木博士已经批了你的研究经费。
 
-原生 SwiftUI · English / 简体中文 / 日本語 · 设备端 Core ML
+原生 SwiftUI · English / 简体中文 / 繁體中文 / 日本語 · 设备端 Core ML
 
 ## 出门考察一下
 

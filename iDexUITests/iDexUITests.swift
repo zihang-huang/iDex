@@ -68,7 +68,7 @@ final class iDexUITests: XCTestCase {
         guard !app.buttons["catalog-button"].exists else {
             throw XCTSkip("The expanded display shows the record beside the scanner.")
         }
-        for language in ["en", "zhHans", "ja"] {
+        for language in ["en", "zhHans", "ja", "zhHant"] {
             if language != "en" {
                 app.terminate()
                 app.launchArguments = ["-idex.language", language, "-idex.soundEnabled", "NO"]
@@ -91,7 +91,8 @@ final class iDexUITests: XCTestCase {
             // The footer shares its row with the bottom screws. Both must
             // remain above the shell's 12pt inset decorative line.
             XCTAssertLessThanOrEqual(footer.frame.maxY, app.frame.maxY - 20)
-            let statsLabel = ["en": "Toggle base stats", "zhHans": "切换基础能力", "ja": "種族値の表示を切り替える"][language]!
+            let statsLabel = ["en": "Toggle base stats", "zhHans": "切换基础能力", "ja": "種族値の表示を切り替える",
+                              "zhHant": "切換基礎能力"][language]!
             app.buttons[statsLabel].tap()
             XCTAssertLessThanOrEqual(footer.frame.maxY, app.frame.maxY - 20)
             attachScreenshot("record-cover-stats-\(language)", app: app)
@@ -148,6 +149,52 @@ final class iDexUITests: XCTestCase {
         app.buttons["pokemon-6"].tap()
         XCTAssertEqual(app.staticTexts["pokemon-name"].label, "リザードン")
         attachScreenshot("charizard-record-ja", app: app)
+    }
+
+    func testTraditionalChineseSelectionPersistsAndLocalizesScannerRecordAndSearch() throws {
+        let app = launchInEnglish()
+        app.buttons["settings-button"].tap()
+        XCTAssertTrue(app.buttons["language-zhHant"].waitForExistence(timeout: 5))
+        app.buttons["language-zhHant"].tap()
+        XCTAssertTrue(app.navigationBars["裝置設定"].waitForExistence(timeout: 5))
+        attachScreenshot("settings-zhHant", app: app)
+        app.buttons["settings-done"].tap()
+        XCTAssertTrue(app.buttons["identify-button"].label.contains("掃描"))
+        app.terminate()
+        app.launchArguments = ["-idex.soundEnabled", "NO", "-idex.lastViewed", "25"]
+        app.launch()
+        XCTAssertTrue(app.buttons["settings-button"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["identify-button"].label.contains("掃描"))
+        XCTAssertTrue(app.buttons["camera-button"].label.contains("相機"))
+        attachScreenshot("scanner-zhHant", app: app)
+
+        app.buttons["identify-button"].tap()
+        XCTAssertTrue(element("scan-result", in: app).waitForExistence(timeout: 45))
+        XCTAssertEqual(app.staticTexts["scan-result-name"].label, "皮卡丘")
+        XCTAssertTrue(app.buttons["identify-button"].label.contains("重新掃描"))
+        if !app.buttons["catalog-button"].exists { app.buttons["record-button"].tap() }
+        XCTAssertEqual(app.staticTexts["pokemon-name"].label, "皮卡丘")
+        XCTAssertTrue(app.staticTexts["鼠寶可夢"].exists)
+        XCTAssertTrue(app.staticTexts["電"].exists)
+        app.buttons["切換基礎能力"].tap()
+        XCTAssertTrue(app.staticTexts["攻擊"].exists)
+        attachScreenshot("record-stats-zhHant", app: app)
+
+        openCatalog(in: app, title: "關都圖鑑")
+        let search = app.searchFields.firstMatch
+        if !search.exists {
+            let revealSearch = app.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "搜尋", "Search")).firstMatch
+            XCTAssertTrue(revealSearch.waitForExistence(timeout: 5))
+            revealSearch.tap()
+        }
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("噴火龍")
+        XCTAssertTrue(app.buttons["pokemon-6"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["pokemon-25"].exists)
+        app.buttons["pokemon-6"].tap()
+        XCTAssertEqual(app.staticTexts["pokemon-name"].label, "噴火龍")
+        attachScreenshot("charizard-record-zhHant", app: app)
     }
 
     func testCatalogSearchAcceptsEnglishChineseAndDexNumber() throws {

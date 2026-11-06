@@ -1,4 +1,4 @@
-[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
 ![iDex — みんなスキャンしよう！](docs/images/banner.png)
 
@@ -6,7 +6,7 @@
 
 iPhone Duo 用のポケットサイズのポケモン図鑑。カメラを向けてスキャンしたら、オーキド博士から研究費が出たつもりで冒険へ。
 
-ネイティブ SwiftUI · English / 简体中文 / 日本語 · デバイス内 Core ML
+ネイティブ SwiftUI · English / 简体中文 / 繁體中文 / 日本語 · デバイス内 Core ML
 
 ## ちょっとフィールドワークへ
 

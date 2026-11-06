@@ -42,9 +42,9 @@ def main():
     flavor = {}
     # Retain the latest available text in each language (CSV is ordered by version id).
     for r in csvs['pokemon_species_flavor_text.csv']:
-        if int(r['species_id']) <= 151 and r['language_id'] in ('9', '11', '12'):
+        if int(r['species_id']) <= 151 and r['language_id'] in ('4', '9', '11', '12'):
             normalized = ' '.join(r['flavor_text'].replace('\f', ' ').split())
-            flavor[(int(r['species_id']), int(r['language_id']))] = normalized.replace(' ', '') if r['language_id'] == '12' else normalized
+            flavor[(int(r['species_id']), int(r['language_id']))] = normalized.replace(' ', '') if r['language_id'] in ('4', '12') else normalized
     entries = []
     slug_by_id = {}
     for p in csvs['pokemon.csv']:
@@ -54,27 +54,32 @@ def main():
         en = species_names[(number, 9)]
         zh = species_names[(number, 12)]
         ja = species_names[(number, 11)]
+        zh_hant = species_names[(number, 4)]
         slug_by_id[number] = p['identifier']
         entry = {
             'id': number,
             'englishName': en['name'],
             'chineseName': zh['name'],
             'japaneseName': ja['name'],
+            'traditionalChineseName': zh_hant['name'],
             'types': [type_names[t['type_id']] for t in csvs['pokemon_types.csv'] if int(t['pokemon_id']) == number],
             'height': int(p['height']) / 10,
             'weight': int(p['weight']) / 10,
             'englishDescription': flavor[(number, 9)],
             'chineseDescription': flavor[(number, 12)],
             'japaneseDescription': flavor[(number, 11)],
+            'traditionalChineseDescription': flavor[(number, 4)],
             'englishGenus': en['genus'],
             'chineseGenus': zh['genus'],
             'japaneseGenus': ja['genus'],
+            'traditionalChineseGenus': zh_hant['genus'],
             'stats': [{'name': stat_names[s['stat_id']], 'value': int(s['base_stat'])} for s in csvs['pokemon_stats.csv'] if int(s['pokemon_id']) == number]
         }
         entries.append(entry)
     assert len(entries) == 151
     assert all(p['chineseDescription'] and p['japaneseName'] and p['japaneseDescription']
-               and p['japaneseGenus'] and len(p['stats']) == 6 for p in entries)
+               and p['japaneseGenus'] and p['traditionalChineseName'] and p['traditionalChineseDescription']
+               and p['traditionalChineseGenus'] and len(p['stats']) == 6 for p in entries)
     RESOURCES.mkdir(parents=True, exist_ok=True)
     (RESOURCES / 'pokemon-kanto.json').write_text(json.dumps(entries, ensure_ascii=False, indent=2) + '\n')
     assets = RESOURCES / 'PokemonSprites.xcassets'
@@ -110,15 +115,17 @@ def main():
     archive = download(fusion_url, CACHE / 'fusion-pixel-font.zip')
     with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
         for name in zipped.namelist():
-            if name.endswith(('zh_hans.otf', '-ja.otf', 'OFL.txt', 'LICENSE.txt')):
+            if name.endswith(('zh_hans.otf', 'zh_hant.otf', '-ja.otf', 'OFL.txt', 'LICENSE.txt')):
                 output_name = 'FusionPixel-OFL.txt'
                 if name.endswith('zh_hans.otf'):
                     output_name = 'FusionPixel-12px-zh-Hans.otf'
+                elif name.endswith('zh_hant.otf'):
+                    output_name = 'FusionPixel-12px-zh-Hant.otf'
                 elif name.endswith('-ja.otf'):
                     output_name = 'FusionPixel-12px-ja.otf'
                 output = font_dir / output_name
                 output.write_bytes(zipped.read(name))
-    print(f'Built {len(entries)} English, Simplified Chinese, and Japanese entries and {len(sources)} sprites.')
+    print(f'Built {len(entries)} English, Simplified Chinese, Traditional Chinese, and Japanese entries and {len(sources)} sprites.')
     print('Pikachu:', entries[24])
     print('Fonts:', [p.name for p in font_dir.iterdir()])
 

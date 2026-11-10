@@ -17,6 +17,7 @@ names = {
     "pikachu-recognition": "record-en.png",
     "record-cover-zhHans": "record-zh.png",
     "record-cover-ja": "record-ja.png",
+    "record-cover-zhHant": "record-zh-TW.png",
     "catalog-english-search": "catalog-search-en.png",
 }
 destination = root / "docs/screenshots"

@@ -30,7 +30,7 @@ Run `python3 scripts/catalog/build_catalog.py` to regenerate catalog resources a
 
 ## Coding Style & Naming Conventions
 
-Match existing Swift style: four-space indentation, `UpperCamelCase` types, `lowerCamelCase` members, and filenames matching their primary type. Keep UI state on `@MainActor` and inference inside `PokemonClassifier`. Use existing language helpers for English and Simplified Chinese copy. No formatter or linter configuration is checked in; use Xcode formatting and `git diff --check`.
+Match existing Swift style: four-space indentation, `UpperCamelCase` types, `lowerCamelCase` members, and filenames matching their primary type. Keep UI state on `@MainActor` and inference inside `PokemonClassifier`. Use the existing `AppLanguage.text` helpers for English, Simplified Chinese, Japanese, and Traditional Chinese (Taiwan usage) copy. No formatter or linter configuration is checked in; use Xcode formatting and `git diff --check`.
 
 ## Testing Guidelines
 

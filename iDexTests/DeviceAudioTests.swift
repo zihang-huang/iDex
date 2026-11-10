@@ -20,6 +20,20 @@ struct DeviceAudioTests {
         audio.suspend()
     }
 
+    @Test func traditionalChineseAnnouncementUsesTaiwanVoice() async throws {
+        let backend = AudioPlaybackSpy()
+        let audio = DeviceAudio(worker: backend, defaults: isolatedDefaults())
+        audio.resume()
+        let pikachu = try #require(PokemonCatalog.shared.pokemon(id: 25))
+        audio.announce(pikachu, language: .zhHant)
+        #expect(await waitUntil { backend.cries == [25] })
+        backend.finishCry()
+        #expect(await waitUntil { backend.spokenCount == 1 })
+        #expect(backend.latestSpeechText == pikachu.spokenEntry(in: .zhHant))
+        #expect(backend.latestLanguageCode == "zh-TW")
+        audio.suspend()
+    }
+
     @Test(arguments: [1, 25, 151])
     func confirmedScanPlaysTheMatchingCryBeforeNarration(dexID: Int) async throws {
         let savedViewed = UserDefaults.standard.object(forKey: "idex.lastViewed")

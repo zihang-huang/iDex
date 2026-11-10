@@ -86,15 +86,15 @@ private struct ScannerPanel: View {
     }
 
     private var scanButtonTitle: String {
-        if store.isScanning { return store.text("SCANNING", "扫描中", "スキャン中") }
-        return canRescan ? store.text("RESCAN", "重新扫描", "再スキャン") : store.text("SCAN", "扫描", "スキャン")
+        if store.isScanning { return store.text("SCANNING", "扫描中", "スキャン中", "掃描中") }
+        return canRescan ? store.text("RESCAN", "重新扫描", "再スキャン", "重新掃描") : store.text("SCAN", "扫描", "スキャン", "掃描")
     }
 
     private var viewfinderTitle: String {
-        if store.isScanning { return store.text("SCANNING…", "扫描中…", "スキャン中…") }
+        if store.isScanning { return store.text("SCANNING…", "扫描中…", "スキャン中…", "掃描中…") }
         if store.scannedPokemon != nil { return store.scanStatusTitle }
-        if store.useSample { return store.text("SAMPLE TARGET", "样本目标", "サンプル") }
-        return store.capturedImage == nil ? store.text("LIVE VIEW", "实时取景", "ライブビュー") : store.text("PHOTO REVIEW", "照片回看", "写真の確認")
+        if store.useSample { return store.text("SAMPLE TARGET", "样本目标", "サンプル", "範例目標") }
+        return store.capturedImage == nil ? store.text("LIVE VIEW", "实时取景", "ライブビュー", "即時取景") : store.text("PHOTO REVIEW", "照片回看", "写真の確認", "照片檢視")
     }
 
     var body: some View {
@@ -104,19 +104,19 @@ private struct ScannerPanel: View {
             ZStack(alignment: .topLeading) {
                 header.frame(height: 70).padding(.horizontal, 34).offset(y: 54)
                 HStack {
-                    pixel(store.text("OPTICAL SENSOR", "光学传感器", "光学センサー"), 7).foregroundStyle(.white.opacity(0.65))
+                    pixel(store.text("OPTICAL SENSOR", "光学传感器", "光学センサー", "光學感測器"), 7).foregroundStyle(.white.opacity(0.65))
                     Spacer()
-                    pixel(store.text("KANTO / 01", "关都 / 01", "カントー / 01"), 7).foregroundStyle(.white.opacity(0.65))
+                    pixel(store.text("KANTO / 01", "关都 / 01", "カントー / 01", "關都 / 01"), 7).foregroundStyle(.white.opacity(0.65))
                 }.frame(width: proxy.size.width - 98).offset(x: 49, y: 146)
                 viewfinder(side: side).frame(width: side + 34, height: side + 34)
                     .position(x: proxy.size.width / 2, y: layout.viewfinder.midY)
                 HStack(spacing: 10) {
                     Button { store.chooseCamera() } label: { Image(systemName: "camera.fill").frame(width: 28) }
-                        .accessibilityLabel(store.text("Use camera", "使用相机", "カメラを使う")).accessibilityIdentifier("camera-button")
+                        .accessibilityLabel(store.text("Use camera", "使用相机", "カメラを使う", "使用相機")).accessibilityIdentifier("camera-button")
                         .disabled(store.isScanning)
                     PhotosPicker(selection: $photo, matching: .images) {
                         Image(systemName: "photo.on.rectangle.angled").frame(width: 28)
-                    }.accessibilityLabel(store.text("Import photo", "导入照片", "写真を読み込む")).disabled(store.isScanning)
+                    }.accessibilityLabel(store.text("Import photo", "导入照片", "写真を読み込む", "匯入照片")).disabled(store.isScanning)
                     Spacer(minLength: 0)
                     Button {
                         if canRescan { store.rescan() }
@@ -143,8 +143,8 @@ private struct ScannerPanel: View {
             ScannerLights(isScanning: store.isScanning, isSpeaking: store.audio.isSpeaking)
             Spacer()
             VStack(alignment: .trailing, spacing: 8) {
-                pixel(store.text("POKÉDEX", "宝可梦图鉴", "ポケモン図鑑"), 10)
-                pixel(store.text("FIELD UNIT 001", "野外终端 001", "フィールド端末 001"), 6)
+                pixel(store.text("POKÉDEX", "宝可梦图鉴", "ポケモン図鑑", "寶可夢圖鑑"), 10)
+                pixel(store.text("FIELD UNIT 001", "野外终端 001", "フィールド端末 001", "野外終端 001"), 6)
             }
             // Reserve the cover camera's expanded privacy-indicator area even
             // before capture starts, so entering live view never shifts the UI.
@@ -173,7 +173,7 @@ private struct ScannerPanel: View {
                             .lineLimit(1).minimumScaleFactor(0.6)
                             .accessibilityIdentifier("scan-result-name")
                         if store.scanResult?.accepted == nil {
-                            pixel(store.text("LOW CONFIDENCE · RESCAN", "置信度较低 · 请重新扫描", "確信度が低い結果 · 再スキャン"), 6)
+                            pixel(store.text("LOW CONFIDENCE · RESCAN", "置信度较低 · 请重新扫描", "確信度が低い結果 · 再スキャン", "信心度偏低 · 請重新掃描"), 6)
                         }
                     }.padding(.horizontal, 24).foregroundStyle(DexTheme.ink)
                         .accessibilityElement(children: .contain).accessibilityIdentifier("scan-result")
@@ -181,7 +181,7 @@ private struct ScannerPanel: View {
                 } else if let captured = store.capturedImage {
                     Image(uiImage: captured).resizable().scaledToFill()
                         .frame(width: side, height: side)
-                        .accessibilityLabel(store.text("Captured scan image", "已捕获的扫描图像", "撮影したスキャン画像"))
+                        .accessibilityLabel(store.text("Captured scan image", "已捕获的扫描图像", "撮影したスキャン画像", "已拍攝的掃描影像"))
                         .accessibilityIdentifier("scan-capture")
                 } else if !store.useSample && store.camera.status == .ready {
                     CameraPreview(controller: store.camera)
@@ -199,7 +199,7 @@ private struct ScannerPanel: View {
                 ScanLines().allowsHitTesting(false)
                 if store.isScanning {
                     ScanSweep(reduceMotion: reduceMotion)
-                        .accessibilityLabel(store.text("Scanning captured image", "正在扫描已捕获的图像", "撮影した画像をスキャン中"))
+                        .accessibilityLabel(store.text("Scanning captured image", "正在扫描已捕获的图像", "撮影した画像をスキャン中", "正在掃描已拍攝的影像"))
                         .accessibilityIdentifier("scan-animation")
                 }
                 VStack {
@@ -213,7 +213,7 @@ private struct ScannerPanel: View {
                     HStack {
                         pixel(store.scannedPokemon.map { "#\($0.number)" } ?? (store.useSample ? "#\(store.sample?.number ?? "025")" : "AF / 1×"), 8)
                         Spacer()
-                        pixel(store.scannedPokemon != nil ? "\(Int((store.scanResult?.candidates.first?.confidence ?? 0) * 100))%" : store.text("OFFLINE", "离线", "オフライン"), 7)
+                        pixel(store.scannedPokemon != nil ? "\(Int((store.scanResult?.candidates.first?.confidence ?? 0) * 100))%" : store.text("OFFLINE", "离线", "オフライン", "離線"), 7)
                     }
                 }.padding(14).foregroundStyle(DexTheme.ink)
                 if store.scannedPokemon == nil {
@@ -224,7 +224,7 @@ private struct ScannerPanel: View {
                         Image(systemName: "viewfinder.trianglebadge.exclamationmark").font(.title2)
                         Text(message).font(PixelFont.font(size: store.language == .en ? 8 : 14, language: store.language)).multilineTextAlignment(.center).lineSpacing(6)
                         if !store.candidates.isEmpty {
-                            Text(store.text("Possible: ", "可能是：", "候補：") + store.candidates.prefix(2).compactMap { candidate in PokemonCatalog.shared.pokemon(id: candidate.dexID)?.name(in: store.language) }.joined(separator: " / "))
+                            Text(store.text("Possible: ", "可能是：", "候補：", "可能是：") + store.candidates.prefix(2).compactMap { candidate in PokemonCatalog.shared.pokemon(id: candidate.dexID)?.name(in: store.language) }.joined(separator: " / "))
                                 .font(.system(size: 11, design: .monospaced))
                         }
                     }.padding(15).frame(maxWidth: .infinity).foregroundStyle(DexTheme.cream)
@@ -263,18 +263,18 @@ private struct ScannerPanel: View {
             Image(systemName: "camera.aperture").font(.system(size: 42, weight: .ultraLight))
             if store.camera.status == .requesting {
                 ProgressView().tint(DexTheme.ink)
-                Text(store.text("Starting camera…", "正在启动相机…", "カメラを起動中…"))
+                Text(store.text("Starting camera…", "正在启动相机…", "カメラを起動中…", "正在啟動相機…"))
                     .font(.system(size: 15, design: .monospaced))
             } else if store.camera.status == .denied {
-                Text(store.text("Camera access is off", "相机权限未开启", "カメラへのアクセスが無効です"))
+                Text(store.text("Camera access is off", "相机权限未开启", "カメラへのアクセスが無効です", "相機權限未開啟"))
                     .font(.system(size: 15, design: .monospaced))
-                Button(store.text("Open Settings", "打开设置", "設定を開く")) {
+                Button(store.text("Open Settings", "打开设置", "設定を開く", "開啟設定")) {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }.font(.system(size: 13, weight: .bold)).tint(DexTheme.ink)
             } else {
-                Text(store.text("Camera unavailable", "相机暂不可用", "カメラを利用できません"))
+                Text(store.text("Camera unavailable", "相机暂不可用", "カメラを利用できません", "相機暫時無法使用"))
                     .font(.system(size: 15, design: .monospaced))
-                Text(store.text("Import a photo", "导入照片", "写真を読み込む"))
+                Text(store.text("Import a photo", "导入照片", "写真を読み込む", "匯入照片"))
                     .font(.system(size: 12, design: .monospaced))
             }
         }.foregroundStyle(DexTheme.ink).multilineTextAlignment(.center).padding(25)
@@ -289,10 +289,10 @@ private struct ScannerPanel: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "book.closed.fill")
-                        pixel(compact ? store.text("OPEN RECORD", "打开记录", "図鑑を開く") : store.text("POKÉDEX", "宝可梦图鉴", "ポケモン図鑑"), 8)
+                        pixel(compact ? store.text("OPEN RECORD", "打开记录", "図鑑を開く", "開啟紀錄") : store.text("POKÉDEX", "宝可梦图鉴", "ポケモン図鑑", "寶可夢圖鑑"), 8)
                     }
                 }.buttonStyle(.plain).accessibilityIdentifier("record-button")
-                pixel(store.text("\(store.seenIDs.count) SEEN · 151 SPECIES", "已发现 \(store.seenIDs.count) · 共151种", "発見 \(store.seenIDs.count) · 全151種"), 6)
+                pixel(store.text("\(store.seenIDs.count) SEEN · 151 SPECIES", "已发现 \(store.seenIDs.count) · 共151种", "発見 \(store.seenIDs.count) · 全151種", "已發現 \(store.seenIDs.count) · 共151種"), 6)
                     .foregroundStyle(.white.opacity(0.5))
             }.foregroundStyle(DexTheme.cream)
             Spacer()
@@ -300,7 +300,7 @@ private struct ScannerPanel: View {
             Button { store.showingSettings = true; store.audio.play(.button) } label: {
                 Image(systemName: "gearshape.fill").font(.system(size: 18)).frame(width: 44, height: 44)
             }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.65))
-                .accessibilityLabel(store.text("Settings", "设置", "設定")).accessibilityIdentifier("settings-button")
+                .accessibilityLabel(store.text("Settings", "设置", "設定", "設定")).accessibilityIdentifier("settings-button")
         }
     }
 
